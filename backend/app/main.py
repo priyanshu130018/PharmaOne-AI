@@ -17,6 +17,7 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.core.logging import configure_logging, get_logger
+from app.schemas.common import HealthStatus
 
 logger = get_logger("pharmaone")
 
@@ -94,6 +95,10 @@ def create_app() -> FastAPI:
             status_code=500,
             content={"detail": "An internal server error occurred. Please try again or contact support."},
         )
+
+    @app.get("/health", response_model=HealthStatus, tags=["meta"], summary="Liveness probe root alias")
+    async def root_health() -> HealthStatus:
+        return HealthStatus(status="ok", environment=settings.ENVIRONMENT, version="0.1.0")
 
     @app.get("/", tags=["meta"], summary="API root")
     async def root() -> dict[str, str]:
