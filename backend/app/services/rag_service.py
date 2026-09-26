@@ -12,6 +12,7 @@ Adheres strictly to the AIVOA workflow specification:
 
 from __future__ import annotations
 
+import hashlib
 import math
 import re
 from typing import TypedDict
@@ -152,26 +153,26 @@ _PHARMA_KNOWLEDGE_BASE = [
 ]
 
 
-HF_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+HF_EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
 HF_ROUTER_URL = f"https://router.huggingface.co/hf-inference/models/{HF_EMBEDDING_MODEL}"
-HF_INFERENCE_URL = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{HF_EMBEDDING_MODEL}"
+HF_INFERENCE_URL = "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
 
 
 def _deterministic_dense_projection(text: str, dim: int = EMBEDDING_DIM) -> list[float]:
     """Generates a dense, normalized semantic embedding vector (384-dimensional)
     for fallback and testing when Hugging Face API key is offline or unavailable.
-    Uses multi-hash projection with semantic token weighting."""
+    Uses MD5 deterministic hashing with position and token weighting (process-independent)."""
     vec = [0.0] * dim
     words = re.findall(r"\b[a-zA-Z0-9_\-\.]{2,}\b", text.lower())
     if not words:
         return vec
 
     for i, word in enumerate(words):
-        # Position-aware multi-hash projection
-        h1 = hash(word) % dim
-        h2 = hash(f"{word}_{i}") % dim
-        h3 = hash(f"pos_{word[:3]}") % dim
+        # Stable deterministic hashing independent of process PYTHONHASHSEED
+        h1 = int(hashlib.md5(word.encode("utf-8")).hexdigest()[:8], 16) % dim
+        h2 = int(hashlib.md5(f"{word}_{i}".encode("utf-8")).hexdigest()[:8], 16) % dim
+        h3 = int(hashlib.md5(f"pos_{word[:3]}".encode("utf-8")).hexdigest()[:8], 16) % dim
         vec[h1] += 1.0
         vec[h2] += 0.5
         vec[h3] += 0.25
@@ -352,17 +353,22 @@ class RagService:
             from sqlalchemy import select
 
             async def _run_db_query(s):
+                cos_dist = KnowledgeChunk.embedding.cosine_distance(query_embedding)
+                max_dist = 1.0 - min_similarity
                 stmt = (
                     select(
                         KnowledgeChunk.chunk_id,
                         KnowledgeChunk.content,
                         KnowledgeChunk.meta,
                         KnowledgeDocument.title,
-                        (1 - KnowledgeChunk.embedding.cosine_distance(query_embedding)).label("similarity"),
+                        (1.0 - cos_dist).label("similarity"),
                     )
                     .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
-                    .where(KnowledgeChunk.embedding.is_not(None))
-                    .order_by(KnowledgeChunk.embedding.cosine_distance(query_embedding))
+                    .where(
+                        KnowledgeChunk.embedding.is_not(None),
+                        cos_dist <= max_dist,
+                    )
+                    .order_by(cos_dist)
                     .limit(top_k)
                 )
                 res = await s.execute(stmt)

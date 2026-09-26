@@ -231,6 +231,7 @@ async def test_rag_asearch_fallback_on_empty_db() -> None:
 @pytest.mark.asyncio
 async def test_live_supabase_storage_and_vector_query() -> None:
     """Verifies live Supabase Storage bucket and live PostgreSQL pgvector chunks if live credentials exist."""
+    import os
     import pathlib
     from dotenv import dotenv_values
 
@@ -249,56 +250,63 @@ async def test_live_supabase_storage_and_vector_query() -> None:
     if not url or "REPLACE" in url or not key or "REPLACE" in key or not db_url or "REPLACE" in db_url:
         pytest.skip("Live Supabase credentials not provided in .env; skipping live cloud verification.")
 
-    from supabase import create_client
-    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    real_hf_key = real_env.get("HUGGINGFACE_API_KEY")
+    orig_hf_key = os.environ.get("HUGGINGFACE_API_KEY")
+    if real_hf_key and not real_hf_key.startswith("test-") and "REPLACE" not in real_hf_key:
+        os.environ["HUGGINGFACE_API_KEY"] = real_hf_key
+        from app.core.config import get_settings
+        get_settings.cache_clear()
 
-    # 1. Verify Storage
-    sb = create_client(url, key)
-    buckets = sb.storage.list_buckets()
-    bucket_names = [b.name for b in buckets]
-    assert "knowledge-base" in bucket_names
+    try:
+        from supabase import create_client
+        from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
-    files = sb.storage.from_("knowledge-base").list("reference-documents")
-    file_names = [f.get("name") if isinstance(f, dict) else getattr(f, "name", "") for f in files]
-    assert "Form-450-Deviation-Report-Form.pdf" in file_names
-    assert "ICH_Q9(R1)_Guideline_Step4_2025_0115_0.pdf" in file_names
-    assert "using-cgmps-documents.pdf" in file_names
+        # 1. Verify Storage
+        sb = create_client(url, key)
+        buckets = sb.storage.list_buckets()
+        bucket_names = [b.name for b in buckets]
+        assert "knowledge-base" in bucket_names
 
-    # 2. Verify Database pgvector
-    async_db_url = db_url.replace("postgresql://", "postgresql+asyncpg://") if "postgresql://" in db_url else db_url
-    engine = create_async_engine(async_db_url)
-    sessionmaker = async_sessionmaker(engine)
+        files = sb.storage.from_("knowledge-base").list("reference-documents")
+        file_names = [f.get("name") if isinstance(f, dict) else getattr(f, "name", "") for f in files]
+        assert "Form-450-Deviation-Report-Form.pdf" in file_names
+        assert "ICH_Q9(R1)_Guideline_Step4_2025_0115_0.pdf" in file_names
+        assert "using-cgmps-documents.pdf" in file_names
 
-    rag = RagService.get_instance()
-    query = "ICH Q9 risk assessment CQAs and sterile manufacturing parameters"
-    vec = rag.embed_text(query)
+        # 2. Verify Database pgvector
+        async_db_url = db_url.replace("postgresql://", "postgresql+asyncpg://") if "postgresql://" in db_url else db_url
+        engine = create_async_engine(async_db_url)
+        sessionmaker = async_sessionmaker(engine)
 
-    async with sessionmaker() as session:
-        # Check documents
-        docs_res = await session.execute(select(KnowledgeDocument))
-        docs = docs_res.scalars().all()
-        assert len(docs) >= 3
+        rag = RagService()
+        query = "ICH Q9 risk assessment CQAs and sterile manufacturing parameters"
 
-        # Check chunks
-        chunks_res = await session.execute(select(KnowledgeChunk))
-        chunks = chunks_res.scalars().all()
-        assert len(chunks) >= 100
+        async with sessionmaker() as session:
+            # Check documents
+            docs_res = await session.execute(select(KnowledgeDocument))
+            docs = docs_res.scalars().all()
+            assert len(docs) >= 3
 
-        # Vector similarity search against live pgvector
-        stmt = (
-            select(
-                KnowledgeChunk.chunk_id,
-                KnowledgeChunk.content,
-                KnowledgeDocument.title,
-                (1 - KnowledgeChunk.embedding.cosine_distance(vec)).label("similarity"),
-            )
-            .join(KnowledgeDocument, KnowledgeChunk.document_id == KnowledgeDocument.id)
-            .order_by(KnowledgeChunk.embedding.cosine_distance(vec))
-            .limit(3)
-        )
-        res = await session.execute(stmt)
-        top_chunks = res.all()
-        assert len(top_chunks) == 3
-        assert float(top_chunks[0].similarity) > 0.15
+            # Check chunks
+            chunks_res = await session.execute(select(KnowledgeChunk))
+            chunks = chunks_res.scalars().all()
+            assert len(chunks) >= 100
 
-    await engine.dispose()
+            # Vector similarity search against live pgvector using production asearch
+            results, success, notes = await rag.asearch(query, session=session, top_k=3, min_similarity=0.20)
+            assert success is True
+            assert len(results) == 3
+            for chunk in results:
+                assert chunk["similarity_score"] >= 0.20
+                assert "ICH" in chunk["document_name"]
+
+            # Verify that any chunk with similarity < 0.20 (e.g. 0.188) is strictly rejected
+            # by checking that no result below 0.20 is returned by asearch
+            assert all(c["similarity_score"] >= 0.20 for c in results)
+
+        await engine.dispose()
+    finally:
+        if orig_hf_key is not None:
+            os.environ["HUGGINGFACE_API_KEY"] = orig_hf_key
+            from app.core.config import get_settings
+            get_settings.cache_clear()

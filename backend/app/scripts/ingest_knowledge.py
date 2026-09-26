@@ -82,6 +82,7 @@ async def main() -> None:
         )
 
     await dispose_engine()
+    await asyncio.sleep(0.25)
 
     print("\n" + "=" * 80)
     print("PHARMAONE AI — KNOWLEDGE BASE INGESTION REPORT")
