@@ -1,0 +1,20 @@
+# Backend build context excludes (context = ./backend).
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+tests/
+*.sqlite
+*.sqlite3
+*.db
+.env
+.env.*
+!.env.example
+Dockerfile
+.dockerignore

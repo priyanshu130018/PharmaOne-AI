@@ -1,0 +1,15 @@
+# Frontend build context excludes (context = ./frontend).
+node_modules/
+dist/
+build/
+.vite/
+npm-debug.log*
+yarn-error.log*
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/
+.idea/
+Dockerfile
+.dockerignore
