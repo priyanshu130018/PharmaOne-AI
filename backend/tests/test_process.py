@@ -24,11 +24,14 @@ async def test_process_returns_extraction_and_assessment(client: AsyncClient) ->
     assert extraction["product_name"] == "SterileInjectable"
 
     assessment = body["assessment"]
-    # contamination + sterility -> critical, patient safety
-    assert assessment["recommended_severity"] == "critical"
-    assert assessment["recommended_impact"] == "patient_safety"
-    assert assessment["criteria_note"]  # demo-criteria label present
-    assert isinstance(assessment["evidence"], list) and assessment["evidence"]
+    # Per compliance requirement: When Groq fails, AI severity/impact is NOT fabricated.
+    # Instead, recommended_severity and recommended_impact are None (unassigned),
+    # leaving final classification to human review with clear notice of service disruption.
+    assert assessment["recommended_severity"] is None
+    assert assessment["recommended_impact"] is None
+    assert "unavailable due to AI service disruption" in assessment["reason"]
+    assert assessment["criteria_note"]
+    assert isinstance(assessment["evidence"], list)
 
 
 async def test_process_equipment_minor(client: AsyncClient) -> None:
@@ -36,7 +39,8 @@ async def test_process_equipment_minor(client: AsyncClient) -> None:
     resp = await client.post("/api/v1/deviations/process", json=payload)
     body = resp.json()
     assert body["extraction"]["deviation_type"] == "equipment"
-    assert body["assessment"]["recommended_severity"] == "minor"
+    assert body["assessment"]["recommended_severity"] is None
+    assert "unavailable" in body["assessment"]["reason"].lower()
 
 
 async def test_process_rejects_empty_content(client: AsyncClient) -> None:
@@ -58,13 +62,14 @@ async def test_process_then_save_flow(client: AsyncClient) -> None:
         "title": proc["extraction"]["title"] or "OOS assay result",
         "description": proc["extraction"]["description"],
         "deviation_type": proc["extraction"]["deviation_type"] or "laboratory",
-        "severity": proc["assessment"]["recommended_severity"],
-        "impact": proc["assessment"]["recommended_impact"],
-        "assessment_reason": proc["assessment"]["reason"],
+        "severity": "major",  # Human reviewer provides authoritative severity
+        "impact": "product_quality",
+        "assessment_reason": "Human reviewer evaluated OOS result and confirmed major product quality impact.",
         "ai_extraction": proc["extraction"],
         "ai_assessment": proc["assessment"],
     }
     resp = await client.post("/api/v1/deviations", json=save_payload)
     assert resp.status_code == 201, resp.text
     saved = resp.json()
+    assert saved["severity"] == "major"
     assert saved["ai_assessment"]["recommended_severity"] == proc["assessment"]["recommended_severity"]

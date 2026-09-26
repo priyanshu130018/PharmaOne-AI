@@ -22,7 +22,7 @@ def get_engine() -> AsyncEngine:
         settings = get_settings()
         _engine = create_async_engine(
             settings.DATABASE_URL,
-            echo=settings.ENVIRONMENT == "development",
+            echo=False,
             pool_pre_ping=True,
             future=True,
         )

@@ -1,5 +1,6 @@
 import uuid
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -8,12 +9,11 @@ from sqlalchemy.types import JSON
 from app.db.base import Base, TimestampMixin, new_uuid
 
 JSONVariant = JSON().with_variant(JSONB(), "postgresql")
+VectorVariant = Vector(384).with_variant(JSON(), "sqlite")
 
 
 class KnowledgeDocument(Base, TimestampMixin):
-    """Metadata for a source document (e.g. an SOP or guideline) that the AI
-    Deviation Assistant may reference. Only metadata is stored here; embeddings
-    / vector storage are intentionally out of scope for this foundation."""
+    """Metadata for a source document (e.g. an SOP or guideline) stored in Supabase Storage."""
 
     __tablename__ = "knowledge_documents"
 
@@ -22,7 +22,7 @@ class KnowledgeDocument(Base, TimestampMixin):
     filename: Mapped[str | None] = mapped_column(String(512), nullable=True)
     source: Mapped[str | None] = mapped_column(String(512), nullable=True)
     doc_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    checksum: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    checksum: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="registered")
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     meta: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
@@ -34,7 +34,7 @@ class KnowledgeDocument(Base, TimestampMixin):
 
 
 class KnowledgeChunk(Base, TimestampMixin):
-    """Metadata for an individual chunk of a knowledge document."""
+    """Chunk of a knowledge document with dense embedding vector for similarity retrieval."""
 
     __tablename__ = "knowledge_chunks"
 
@@ -45,7 +45,9 @@ class KnowledgeChunk(Base, TimestampMixin):
         nullable=False,
     )
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    chunk_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(VectorVariant, nullable=True)
     meta: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
 
     document: Mapped[KnowledgeDocument] = relationship(back_populates="chunks")

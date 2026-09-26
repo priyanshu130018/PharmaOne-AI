@@ -60,3 +60,13 @@ async def client() -> AsyncClient:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
         yield ac
+
+
+@pytest_asyncio.fixture
+async def db_session():
+    from app.db.session import get_sessionmaker
+
+    sessionmaker = get_sessionmaker()
+    async with sessionmaker() as session:
+        yield session
+

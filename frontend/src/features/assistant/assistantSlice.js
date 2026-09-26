@@ -149,14 +149,14 @@ export const processDeviationInput = createAsyncThunk(
       dispatch(
         setProcessingStage({
           stage: "assessing_severity",
-          message: "Assessing severity per ICH Q9 risk criteria…",
+          message: "Assessing initial severity recommendation based on quality-risk context…",
           sessionId,
         })
       );
       dispatch(
         setStage({
           stage: "assessing_severity",
-          message: "Assessing severity per ICH Q9 risk criteria…",
+          message: "Assessing initial severity recommendation based on quality-risk context…",
         })
       );
 

@@ -8,7 +8,7 @@ const initialState = {
   evidence: [],
   retrievedSources: [],
   uncertainties: [],
-  criteriaNote: "Configurable/demo risk criteria — NOT a universal regulatory severity lookup. ICH Q9 is methodology guidance only. Final impact and severity must be confirmed by the reviewer against approved company procedures.",
+  criteriaNote: "AI initial severity recommendation based on the deviation information and retrieved quality-risk context. Advisory only — final impact and severity must be confirmed and approved by authorized quality personnel.",
   requiresHumanReview: true,
   ragAvailable: true,
   ragNotes: null,

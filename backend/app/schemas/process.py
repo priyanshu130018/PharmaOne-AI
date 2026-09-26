@@ -119,8 +119,8 @@ class StructuredDeviation(BaseModel):
 class AssessmentResult(BaseModel):
     """Initial quality-risk assessment recommendation for human review."""
 
-    impact: Impact = Field(..., description="Recommended quality impact area")
-    severity: Severity = Field(..., description="Recommended initial severity level")
+    impact: Impact | None = Field(default=None, description="Recommended quality impact area (None if unavailable)")
+    severity: Severity | None = Field(default=None, description="Recommended initial severity level (None if unavailable)")
     reason: str = Field(..., description="Justification grounded in GMP and reference context")
     evidence: list[str] = Field(
         default_factory=list,
@@ -132,9 +132,8 @@ class AssessmentResult(BaseModel):
     )
     criteria_note: str = Field(
         default=(
-            "Configurable/demo risk criteria — NOT a universal regulatory severity lookup. "
-            "ICH Q9 is methodology guidance only. Final impact and severity must be confirmed "
-            "by the reviewer against approved company procedures."
+            "AI initial severity recommendation based on the deviation information and retrieved quality-risk context. "
+            "Advisory only — final impact and severity must be confirmed and approved by authorized quality personnel."
         ),
         description="Governance notice clarifying that AI output is decision support.",
     )

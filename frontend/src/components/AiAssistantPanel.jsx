@@ -27,7 +27,7 @@ export const AIVOA_STAGES = [
   { key: "extracting_deviation", label: "Extracting deviation", sub: "Structuring AIVOA fields" },
   { key: "retrieving_references", label: "Retrieving references", sub: "SOP vector search" },
   { key: "assessing_impact", label: "Assessing impact", sub: "CQAs & risk context" },
-  { key: "assessing_severity", label: "Assessing severity", sub: "ICH Q9 criteria" },
+  { key: "assessing_severity", label: "Assessing severity", sub: "Quality-risk context" },
   { key: "ready_for_review", label: "Ready for review", sub: "Fields populated" },
 ];
 

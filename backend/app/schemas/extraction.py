@@ -34,7 +34,7 @@ class ExtractionMetadata(BaseModel):
     )
     ocr_available: bool = Field(
         default=True,
-        description="True if OCR engine (Tesseract) is available on the host.",
+        description="True if OCR service (Hugging Face) is available.",
     )
     warnings: list[str] = Field(
         default_factory=list,

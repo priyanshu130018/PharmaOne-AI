@@ -37,3 +37,7 @@ class EmptyPdfError(PharmaOneError):
 
 class DocumentExtractionError(PharmaOneError):
     """Raised when extraction encounters an unrecoverable processing error."""
+
+
+class StorageOperationError(PharmaOneError):
+    """Raised when interaction with Supabase Storage fails."""

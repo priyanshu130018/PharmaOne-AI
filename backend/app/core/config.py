@@ -1,6 +1,6 @@
 import functools
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env"),
         env_file_encoding="utf-8",
         case_sensitive=True,
         extra="ignore",
@@ -51,17 +51,25 @@ class Settings(BaseSettings):
         default=True,
         description="whether OCR fallback is enabled for scanned documents",
     )
-    TESSERACT_CMD: str | None = Field(
-        default=None,
-        description="optional custom path to tesseract binary if not in system PATH",
-    )
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def _validate_database_url(cls, value: str) -> str:
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+asyncpg://", 1)
+        return value
 
     @field_validator("ENVIRONMENT")
     @classmethod
     def _validate_environment(cls, value: str) -> str:
-        allowed = {"development", "staging", "production", "test"}
+        allowed = {"production", "staging", "test"}
         if value not in allowed:
-            raise ValueError(f"ENVIRONMENT must be one of {sorted(allowed)}, got '{value}'")
+            raise ValueError(
+                f"ENVIRONMENT must be one of {sorted(allowed)}, got '{value}'. "
+                "Development environments (e.g. 'development', 'dev') are not permitted in production configuration."
+            )
         return value
 
     @field_validator("CORS_ORIGINS")
@@ -70,6 +78,17 @@ class Settings(BaseSettings):
         if not value or not value.strip():
             raise ValueError("CORS_ORIGINS must be a non-empty comma-separated list of origins")
         return value
+
+    @model_validator(mode="after")
+    def _validate_production_cors(self) -> "Settings":
+        if self.ENVIRONMENT == "production":
+            origins = self.cors_origins
+            if any(origin == "*" for origin in origins):
+                raise ValueError(
+                    "CORS_ORIGINS cannot use wildcard '*' in production environment. "
+                    "Specify explicit allowed origins (e.g. 'https://your-production-frontend-domain.com')."
+                )
+        return self
 
     @property
     def cors_origins(self) -> list[str]:

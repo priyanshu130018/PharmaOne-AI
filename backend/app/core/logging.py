@@ -11,7 +11,7 @@ def configure_logging() -> None:
     call sites). Output goes to stdout so container runtimes can collect it.
     """
     settings = get_settings()
-    level = logging.DEBUG if settings.ENVIRONMENT in {"development", "test"} else logging.INFO
+    level = logging.DEBUG if settings.ENVIRONMENT == "test" else logging.INFO
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(

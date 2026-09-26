@@ -45,30 +45,36 @@ export default function AssistantResult({ extraction, assessment, meta, applied,
   return (
     <div className="space-y-4">
       {/* 1. AI Initial Impact Recommendation */}
-      {recImpact && (
-        <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              AI Initial Impact Recommendation
-            </span>
+      <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            AI Initial Impact Recommendation
+          </span>
+          {recImpact ? (
             <Badge className="border-brand-200 bg-brand-50 font-semibold text-brand-700">
               {labelFor(IMPACTS, recImpact)}
             </Badge>
-          </div>
-          <div className="mt-2 text-xs text-slate-700">
-            <span className="font-semibold text-slate-600">Reason: </span>
-            {assessment.impact_reason || reasonText || "Evaluated against product quality specifications and critical attributes."}
-          </div>
+          ) : (
+            <Badge className="border-amber-200 bg-amber-50 text-amber-800">
+              Manual Review Required
+            </Badge>
+          )}
         </div>
-      )}
+        <div className="mt-2 text-xs text-slate-700">
+          <span className="font-semibold text-slate-600">Reason: </span>
+          {assessment?.impact_reason || (recImpact ? reasonText : null) || (
+            assessment?.reason || "Evaluated against product quality specifications and critical attributes."
+          )}
+        </div>
+      </div>
 
       {/* 2. AI Initial Severity Recommendation */}
-      {recSeverity && (
-        <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              AI Initial Severity Recommendation
-            </span>
+      <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+            AI Initial Severity Recommendation
+          </span>
+          {recSeverity ? (
             <div className="flex items-center gap-1.5">
               <Badge className={SEVERITY_STYLES[recSeverity] || "border-slate-200 bg-slate-100 text-slate-700"}>
                 {labelFor(SEVERITIES, recSeverity)}
@@ -79,13 +85,17 @@ export default function AssistantResult({ extraction, assessment, meta, applied,
                 </span>
               )}
             </div>
-          </div>
-          <div className="mt-2 text-xs text-slate-700">
-            <span className="font-semibold text-slate-600">Reason: </span>
-            {assessment.severity_reason || reasonText || "Provisional classification based on ICH Q9 quality risk management criteria."}
-          </div>
+          ) : (
+            <Badge className="border-amber-200 bg-amber-50 text-amber-800">
+              Unavailable (Manual Review Required)
+            </Badge>
+          )}
         </div>
-      )}
+        <div className="mt-2 text-xs text-slate-700">
+          <span className="font-semibold text-slate-600">Reason: </span>
+          {assessment?.severity_reason || reasonText || (recSeverity ? "AI initial severity recommendation based on the deviation information and retrieved quality-risk context." : "AI severity evaluation was unavailable due to service disruption. An authorized quality reviewer must evaluate and determine severity.")}
+        </div>
+      </div>
 
       {/* 3. Evidence / References */}
       <div className="rounded-lg border border-slate-200 bg-white p-3.5 shadow-xs space-y-3">
@@ -180,7 +190,7 @@ export default function AssistantResult({ extraction, assessment, meta, applied,
           Human Review Required
         </div>
         <p className="leading-relaxed text-amber-800/90">
-          AI output is advisory decision support per ICH Q9 methodology. It does not finalize regulatory classifications.
+          AI initial severity recommendation based on the deviation information and retrieved quality-risk context. Advisory only — final severity must be confirmed and approved by authorized quality personnel.
           A qualified quality reviewer must review and verify all fields on the left before saving.
         </p>
         {assessment?.criteria_note && (

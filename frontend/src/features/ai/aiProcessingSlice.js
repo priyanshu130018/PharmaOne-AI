@@ -6,7 +6,7 @@ export const STAGES = [
   { key: "extracting_deviation", label: "Extracting deviation", desc: "Extracting structured deviation fields" },
   { key: "retrieving_references", label: "Retrieving references", desc: "Searching pharmaceutical SOPs & ICH guidelines" },
   { key: "assessing_impact", label: "Assessing impact", desc: "Evaluating quality risk & critical quality attributes" },
-  { key: "assessing_severity", label: "Assessing severity", desc: "Evaluating initial severity classification per ICH Q9" },
+  { key: "assessing_severity", label: "Assessing severity", desc: "Evaluating initial severity recommendation based on quality-risk context" },
   { key: "ready_for_review", label: "Ready for review", desc: "AI analysis complete — fields populated for human review" },
 ];
 

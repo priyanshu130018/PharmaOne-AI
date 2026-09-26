@@ -51,7 +51,7 @@ PharmaOne AI is built as a **clean, layered monolith** containerized with Docker
  ┌──────────────────────────────────▼─────────────────────────────────────┐
  │ Service Layer (Business Logic & Orchestration)                         │
  │  - ExtractionService (MIME validation, streaming size limit, cleanup)   │
- │  - OcrService (Tesseract & Poppler image fallback)                     │
+ │  - OcrService (Hugging Face Inference API OCR fallback)                     │
  │  - ProcessingService (AI workflow dispatcher)                          │
  │  - RagService (Vector embeddings & cosine similarity matching)         │
  │  - DeviationService (Human review authority & sequential references)   │
@@ -85,7 +85,7 @@ PharmaOne-AI/
 ├── AIVOA_DEMO_SCRIPT.md            # Step-by-step 5-10 minute technical demo script
 │
 ├── backend/                        # FastAPI Layered Monolith
-│   ├── Dockerfile                  # Python 3.12-slim + Tesseract OCR + Poppler utils
+│   ├── Dockerfile                  # Python 3.12-slim production container
 │   ├── requirements.txt            # Pinned runtime dependencies
 │   ├── requirements-dev.txt        # Test runner dependencies (pytest, aiosqlite)
 │   ├── alembic.ini                 # Database migration config
@@ -327,5 +327,5 @@ npm run build
 
 ## Known Limitations
 
-1. **OCR Performance**: High-resolution scanned documents processed via Tesseract OCR in container environments require reasonable CPU allocation.
+1. **OCR Performance**: Scanned/image documents are processed via Hugging Face Inference API, subject to API availability and token configuration.
 2. **Live External AI Credentials**: Live Groq LLM calls and Supabase persistence require active API keys configured in `.env`. In offline or disconnected environments, the built-in heuristic extractor and SQLite in-memory database ensure 100% operational resilience.

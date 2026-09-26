@@ -6,7 +6,7 @@ Reimplements the n8n PharmaOne-AI workflow in a production-grade Python graph:
 3. structured Pydantic output validation
 4. reference retrieval via vector RAG
 5. quality-risk context and impact assessment
-6. initial severity recommendation (ICH Q9 decision support)
+6. initial severity recommendation based on deviation information and retrieved quality-risk context
 7. final structured response compilation
 
 Architecture:
@@ -59,9 +59,8 @@ from app.services.rag_service import RagService, RetrievedChunk
 logger = get_logger("pharmaone.ai_workflow")
 
 _CRITERIA_NOTE = (
-    "Configurable/demo risk criteria — NOT a universal regulatory severity lookup. "
-    "ICH Q9 is methodology guidance only. Final impact and severity must be confirmed "
-    "by the reviewer against approved company procedures."
+    "AI initial severity recommendation based on the deviation information and retrieved quality-risk context. "
+    "Advisory only — final impact and severity must be confirmed and approved by authorized quality personnel."
 )
 
 
@@ -415,7 +414,7 @@ async def retrieve_reference_context_node(state: DeviationWorkflowState) -> dict
 
     try:
         rag_service = RagService.get_instance()
-        chunks, success, message = rag_service.retrieve(query, top_k=3)
+        chunks, success, message = await rag_service.asearch(query, top_k=3)
         return {
             "retrieved_chunks": chunks,
             "rag_available": success,
@@ -481,19 +480,22 @@ async def assess_impact_node(state: DeviationWorkflowState) -> dict[str, Any]:
         impact_json = json.loads(response.choices[0].message.content or "{}")
         return {"impact_assessment": impact_json}
     except Exception as exc:
-        logger.warning("Node [assess_impact]: LLM impact assessment call failed (%s). Using fallback.", exc)
+        logger.warning("Node [assess_impact]: LLM impact assessment call failed (%s). Using safe unverified state.", exc)
         return {
             "impact_assessment": {
-                "risk_factors": ["Potential process variation"],
-                "potential_product_impact": "Requires quality investigation against batch release criteria.",
-                "quality_risk_considerations": ["Verify product critical quality attributes"],
-                "uncertainties": dev.get("missing_information", []),
+                "risk_factors": [],
+                "potential_product_impact": (
+                    "Quality impact assessment unavailable due to AI service disruption. "
+                    "Requires manual review by authorized quality personnel."
+                ),
+                "quality_risk_considerations": ["Manual evaluation of Critical Quality Attributes required."],
+                "uncertainties": dev.get("missing_information", []) + ["AI evaluation disrupted"],
             }
         }
 
 
 async def assess_severity_node(state: DeviationWorkflowState) -> dict[str, Any]:
-    """Node 6: Initial AI severity recommendation (ICH Q9 decision support)."""
+    """Node 6: Initial AI severity recommendation based on deviation information and retrieved quality-risk context."""
     if not state.get("is_valid", True):
         return {}
 
@@ -541,25 +543,21 @@ async def assess_severity_node(state: DeviationWorkflowState) -> dict[str, Any]:
         sev_json = json.loads(response.choices[0].message.content or "{}")
         return {"severity_assessment": sev_json}
     except Exception as exc:
-        logger.warning("Node [assess_severity]: LLM severity call failed (%s). Using rule-based fallback.", exc)
-        desc_lower = str(dev.get("detailed_description", "")).lower()
-        if any(w in desc_lower for w in ("sterility", "contaminat", "patient", "endotoxin", "recall")):
-            rec_sev, rec_imp = Severity.CRITICAL, Impact.PATIENT_SAFETY
-            reason = "Content mentions sterility, contamination, or patient safety risk factors."
-        elif any(w in desc_lower for w in ("out of specification", "oos", "excursion", "failure", "abort")):
-            rec_sev, rec_imp = Severity.MAJOR, Impact.PRODUCT_QUALITY
-            reason = "Content mentions specification failure or process excursion."
-        else:
-            rec_sev, rec_imp = Severity.MINOR, Impact.PRODUCT_QUALITY
-            reason = "No high-risk terminology detected; provisional minor classification."
-
+        logger.warning(
+            "Node [assess_severity]: LLM severity call failed (%s). Leaving severity unassigned for human review.",
+            exc,
+        )
         return {
             "severity_assessment": {
-                "recommended_severity": rec_sev.value,
-                "recommended_impact": rec_imp.value,
-                "reason": reason,
-                "evidence": [f"Evaluated from text: {dev.get('title_short_description')}"],
-                "uncertainties": dev.get("missing_information", []),
+                "recommended_severity": None,
+                "recommended_impact": None,
+                "reason": (
+                    "AI initial severity recommendation unavailable due to AI service disruption. "
+                    "An authorized quality reviewer must evaluate and determine severity manually."
+                ),
+                "evidence": ["AI service unavailable - no automated assessment performed."],
+                "uncertainties": dev.get("missing_information", [])
+                + ["Automated severity evaluation could not be completed."],
             }
         }
 
@@ -576,10 +574,13 @@ async def prepare_final_assessment_node(state: DeviationWorkflowState) -> dict[s
             missing_information=["Input failed validation"],
         )
         empty_assess = AssessmentResult(
-            impact=Impact.NONE,
-            severity=Severity.MINOR,
+            impact=None,
+            severity=None,
             reason=state.get("validation_error") or "Input invalid",
             uncertainties=["Input too short"],
+            criteria_note=_CRITERIA_NOTE,
+            recommended_impact=None,
+            recommended_severity=None,
         )
         return {
             "final_response": {
@@ -599,20 +600,21 @@ async def prepare_final_assessment_node(state: DeviationWorkflowState) -> dict[s
     sev_data = state.get("severity_assessment") or {}
     chunks = state.get("retrieved_chunks") or []
 
-    # Map recommended severity & impact enums
-    rec_sev_str = str(sev_data.get("recommended_severity", "minor")).lower()
-    rec_imp_str = str(sev_data.get("recommended_impact", "product_quality")).lower()
+    # Map recommended severity & impact enums safely (None if unavailable)
+    rec_sev_val = sev_data.get("recommended_severity")
+    rec_imp_val = sev_data.get("recommended_impact")
 
-    rec_sev = (
-        Severity(rec_sev_str)
-        if rec_sev_str in Severity._value2member_map_
-        else Severity.MINOR
-    )
-    rec_imp = (
-        Impact(rec_imp_str)
-        if rec_imp_str in Impact._value2member_map_
-        else Impact.PRODUCT_QUALITY
-    )
+    rec_sev: Severity | None = None
+    if rec_sev_val:
+        rec_sev_str = str(rec_sev_val).lower()
+        if rec_sev_str in Severity._value2member_map_:
+            rec_sev = Severity(rec_sev_str)
+
+    rec_imp: Impact | None = None
+    if rec_imp_val:
+        rec_imp_str = str(rec_imp_val).lower()
+        if rec_imp_str in Impact._value2member_map_:
+            rec_imp = Impact(rec_imp_str)
 
     structured_dev = StructuredDeviation.model_validate(dev_data)
     evidence = sev_data.get("evidence") or structured_dev.extracted_facts
