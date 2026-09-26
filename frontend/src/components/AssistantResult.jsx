@@ -70,6 +70,11 @@ export default function AssistantResult({ extraction, assessment, meta, applied,
                 Heuristic stub
               </Badge>
             )}
+            {meta?.rag_available === false && (
+              <Badge className="border-amber-200 bg-amber-50 text-amber-700">
+                RAG offline
+              </Badge>
+            )}
           </div>
 
           {assessment.reason && <p className="text-sm text-slate-700">{assessment.reason}</p>}
@@ -77,14 +82,55 @@ export default function AssistantResult({ extraction, assessment, meta, applied,
           <div className="mt-3 space-y-3">
             <List title="Evidence" items={assessment.evidence} />
             <List title="Deterministic checks" items={assessment.deterministic_checks} />
-            <List title="Retrieved sources" items={assessment.retrieved_sources} />
+            <List title="Uncertainties & Reviewer Checks" items={assessment.uncertainties} />
+
+            {Array.isArray(meta?.retrieved_sources) && meta.retrieved_sources.length > 0 ? (
+              <div>
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  Retrieved Reference SOPs (RAG)
+                </p>
+                <div className="space-y-1.5">
+                  {meta.retrieved_sources.map((src, i) => (
+                    <div key={i} className="rounded border border-slate-200 bg-white p-2 text-xs text-slate-700">
+                      <div className="flex items-center justify-between font-medium text-slate-800">
+                        <span>{src.document_name || src}</span>
+                        {src.similarity_score != null && (
+                          <span className="rounded bg-brand-50 px-1.5 py-0.5 text-[10px] text-brand-700">
+                            Match: {Math.round(src.similarity_score * 100)}%
+                          </span>
+                        )}
+                      </div>
+                      {src.section && <p className="mt-0.5 font-normal text-slate-500">{src.section}</p>}
+                      {src.content && <p className="mt-1 line-clamp-2 text-slate-600">{src.content}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <List title="Retrieved sources" items={assessment.retrieved_sources} />
+            )}
           </div>
+
+          {meta?.rag_notes && (
+            <p className="mt-2 text-xs italic text-amber-600">{meta.rag_notes}</p>
+          )}
 
           {assessment.criteria_note && (
             <p className="mt-3 rounded border border-slate-200 bg-white px-2 py-1 text-xs italic text-slate-500">
               {assessment.criteria_note}
             </p>
           )}
+        </div>
+      )}
+
+      {meta?.deviation?.missing_information?.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3 text-xs">
+          <p className="mb-1 font-semibold text-amber-800">Missing Information (Identified by AI)</p>
+          <ul className="list-inside list-disc space-y-0.5 text-amber-700">
+            {meta.deviation.missing_information.map((item, idx) => (
+              <li key={idx}>{item}</li>
+            ))}
+          </ul>
         </div>
       )}
 

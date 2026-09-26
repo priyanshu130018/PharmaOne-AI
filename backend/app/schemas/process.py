@@ -1,3 +1,12 @@
+"""Pydantic schemas for the AI Deviation Intake workflow.
+
+Defines the structured deviation schema, RAG retrieved source schema,
+and risk assessment responses. Strictly distinguishes extracted facts,
+inferences, and missing information.
+"""
+
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 
 from app.core.enums import (
@@ -10,22 +19,142 @@ from app.core.enums import (
 
 
 class ProcessRequest(BaseModel):
-    """Raw deviation content the user pastes/uploads for AI processing.
-
-    For this foundation only `content` (text/email body) is accepted. PDF
-    upload + OCR is a documented next step; the contract will not change.
-    """
+    """Raw deviation content the user pastes/uploads for AI processing."""
 
     content: str = Field(..., min_length=5, description="Deviation text / email content")
     source: DeviationSource = DeviationSource.TEXT
 
 
-class ExtractionResult(BaseModel):
-    """Structured deviation fields extracted by the AI from raw content.
+class StructuredDeviation(BaseModel):
+    """Structured deviation fields extracted by the AI from normalized content.
 
-    Mirrors the editable Log Deviation form fields. Everything is optional
-    because extraction is best-effort and the user reviews/edits before save.
+    Distinguishes facts directly stated in the source from inferred information
+    and explicitly identified missing data. Does not invent or fabricate values.
     """
+
+    site_plant: str | None = Field(
+        default=None,
+        description="Manufacturing site or facility name",
+    )
+    date_of_occurrence: str | None = Field(
+        default=None,
+        description="Date or timestamp of deviation occurrence",
+    )
+    title_short_description: str | None = Field(
+        default=None,
+        description="Short summary title of the deviation",
+    )
+    source: str | None = Field(
+        default=None,
+        description="Source classification or document reference",
+    )
+    related_product_material: str | None = Field(
+        default=None,
+        description="Product name or material identifier",
+    )
+    batch_lot_number: str | None = Field(
+        default=None,
+        description="Batch number or lot identifier",
+    )
+    detailed_description: str | None = Field(
+        default=None,
+        description="Detailed description of what occurred",
+    )
+    deviation_type: DeviationType | None = Field(
+        default=None,
+        description="Classified deviation type",
+    )
+    manufacturing_stage: str | None = Field(
+        default=None,
+        description="Process step or manufacturing stage",
+    )
+    equipment: str | None = Field(
+        default=None,
+        description="Equipment, machine, or instrument involved",
+    )
+    department: str | None = Field(
+        default=None,
+        description="Department or functional area",
+    )
+    parameter: str | None = Field(
+        default=None,
+        description="Physical/chemical/biological parameter monitored",
+    )
+    approved_range: str | None = Field(
+        default=None,
+        description="Validated limit or approved range",
+    )
+    actual_value: str | None = Field(
+        default=None,
+        description="Observed or measured excursion value",
+    )
+    duration: str | None = Field(
+        default=None,
+        description="Duration of excursion or event",
+    )
+    immediate_action: str | None = Field(
+        default=None,
+        description="Containment or immediate action taken",
+    )
+    qa_notified: bool | None = Field(
+        default=None,
+        description="Whether QA was notified",
+    )
+
+    # Distinct categorization of information types
+    extracted_facts: list[str] = Field(
+        default_factory=list,
+        description="Factual assertions directly extracted from the input text.",
+    )
+    inferred_information: list[str] = Field(
+        default_factory=list,
+        description="Plausible inferences derived from context with AI reasoning.",
+    )
+    missing_information: list[str] = Field(
+        default_factory=list,
+        description="Explicitly identified fields not present in the input text.",
+    )
+
+
+class AssessmentResult(BaseModel):
+    """Initial quality-risk assessment recommendation for human review."""
+
+    impact: Impact = Field(..., description="Recommended quality impact area")
+    severity: Severity = Field(..., description="Recommended initial severity level")
+    reason: str = Field(..., description="Justification grounded in GMP and reference context")
+    evidence: list[str] = Field(
+        default_factory=list,
+        description="Factual observations and reference citations supporting the recommendation",
+    )
+    uncertainties: list[str] = Field(
+        default_factory=list,
+        description="Unverified assumptions or missing data affecting the assessment",
+    )
+    criteria_note: str = Field(
+        default=(
+            "Configurable/demo risk criteria — NOT a universal regulatory severity lookup. "
+            "ICH Q9 is methodology guidance only. Final impact and severity must be confirmed "
+            "by the reviewer against approved company procedures."
+        ),
+        description="Governance notice clarifying that AI output is decision support.",
+    )
+    recommended_impact: Impact | None = None
+    recommended_severity: Severity | None = None
+
+
+class RetrievedSource(BaseModel):
+    """Source reference retrieved from the pharmaceutical knowledge base."""
+
+    document_name: str
+    chunk_id: str | None = None
+    section: str | None = None
+    page_or_chunk: str | None = None
+    similarity_score: float | None = None
+    content: str
+
+
+class ExtractionResult(BaseModel):
+    """Backward-compatible mapping of structured fields for the editable form."""
 
     title: str | None = None
     description: str | None = None
@@ -46,11 +175,7 @@ class ExtractionResult(BaseModel):
 
 
 class RiskAssessment(BaseModel):
-    """AI-assisted risk output. Decision support only — human review required.
-
-    `criteria_note` labels the basis as configurable/demo criteria, per the
-    AIVOA governance requirement (not a universal regulatory severity lookup).
-    """
+    """Backward-compatible risk assessment model."""
 
     recommended_impact: Impact
     recommended_severity: Severity
@@ -62,12 +187,18 @@ class RiskAssessment(BaseModel):
 
 
 class ProcessResponse(BaseModel):
-    extraction: ExtractionResult
-    assessment: RiskAssessment
-    model: str = Field(..., description="Model identifier configured for the workflow")
-    provider: str = Field(..., examples=["groq", "stub"])
-    is_stub: bool = Field(
-        ...,
-        description="True when produced by the offline heuristic stub rather than a live LLM/RAG pipeline.",
-    )
+    """Complete response returned by the AI Deviation Intake workflow."""
+
+    deviation: StructuredDeviation
+    assessment: AssessmentResult
+    evidence: list[str] = Field(default_factory=list)
+    retrieved_sources: list[RetrievedSource] = Field(default_factory=list)
+    rag_available: bool = True
+    rag_notes: str | None = None
+    model: str = Field(..., description="Groq model identifier used for extraction and assessment")
+    provider: str = Field(default="groq", description="AI provider")
+    is_stub: bool = False
     requires_human_review: bool = True
+
+    # Backward-compatible fields for UI
+    extraction: ExtractionResult | None = None
