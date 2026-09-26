@@ -96,7 +96,7 @@ const deviationsSlice = createSlice({
             state.form[key] = value;
           }
         });
-        state.form.source = "text";
+        state.form.source = action.payload.source || "text";
       }
       if (assessment) {
         if (assessment.recommended_severity) state.form.severity = assessment.recommended_severity;

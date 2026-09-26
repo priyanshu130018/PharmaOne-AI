@@ -17,3 +17,23 @@ class NotFoundError(PharmaOneError):
 
 class ValidationError(PharmaOneError):
     """Raised when input fails a business rule (distinct from schema validation)."""
+
+
+class UnsupportedFileTypeError(PharmaOneError):
+    """Raised when an uploaded document has an unsupported extension or MIME type."""
+
+
+class FileTooLargeError(PharmaOneError):
+    """Raised when an uploaded document exceeds the maximum permitted size."""
+
+
+class InvalidPdfError(PharmaOneError):
+    """Raised when an uploaded PDF is malformed, corrupt, or unreadable."""
+
+
+class EmptyPdfError(PharmaOneError):
+    """Raised when a PDF contains 0 pages or no extractable text."""
+
+
+class DocumentExtractionError(PharmaOneError):
+    """Raised when extraction encounters an unrecoverable processing error."""

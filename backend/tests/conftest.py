@@ -28,6 +28,8 @@ os.environ.setdefault("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key")
 os.environ.setdefault("GROQ_API_KEY", "test-groq-key")
 os.environ.setdefault("GROQ_MODEL", "llama-3.3-70b-versatile")
 os.environ.setdefault("HUGGINGFACE_API_KEY", "test-hf-key")
+os.environ.setdefault("MAX_UPLOAD_SIZE_BYTES", "10485760")
+os.environ.setdefault("OCR_ENABLED", "true")
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402

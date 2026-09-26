@@ -42,6 +42,20 @@ class Settings(BaseSettings):
     GROQ_MODEL: str = Field(..., description="Groq chat model identifier")
     HUGGINGFACE_API_KEY: str = Field(..., description="HuggingFace API key (secret)")
 
+    # --- Document Upload & OCR ---
+    MAX_UPLOAD_SIZE_BYTES: int = Field(
+        default=10 * 1024 * 1024,
+        description="maximum allowed file upload size in bytes (default: 10MB)",
+    )
+    OCR_ENABLED: bool = Field(
+        default=True,
+        description="whether OCR fallback is enabled for scanned documents",
+    )
+    TESSERACT_CMD: str | None = Field(
+        default=None,
+        description="optional custom path to tesseract binary if not in system PATH",
+    )
+
     @field_validator("ENVIRONMENT")
     @classmethod
     def _validate_environment(cls, value: str) -> str:

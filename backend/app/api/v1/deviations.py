@@ -1,18 +1,75 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Response, status
+from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile, status
 
-from app.api.deps import DeviationServiceDep, ProcessingServiceDep
-from app.core.enums import DeviationStatus, DeviationType, Severity
+from app.api.deps import (
+    DeviationServiceDep,
+    ExtractionServiceDep,
+    ProcessingServiceDep,
+)
+from app.core.enums import DeviationSource, DeviationStatus, DeviationType, Severity
+from app.core.exceptions import PharmaOneError, ValidationError
 from app.schemas.deviation import (
     DeviationCreate,
     DeviationList,
     DeviationRead,
     DeviationUpdate,
 )
+from app.schemas.extraction import ExtractionResponse
 from app.schemas.process import ProcessRequest, ProcessResponse
 
 router = APIRouter(prefix="/deviations", tags=["deviations"])
+
+
+@router.post(
+    "/extract-text",
+    response_model=ExtractionResponse,
+    summary="Extract normalized text from document upload or pasted text/email",
+    description=(
+        "Primary input endpoint for the AI Deviation Intake pipeline.\n\n"
+        "Accepts either an uploaded PDF/text document or pasted text/email content.\n"
+        "Performs normalization, automatic scanned-PDF detection, and safe OCR fallback."
+    ),
+)
+async def extract_text(
+    request: Request,
+    service: ExtractionServiceDep,
+    file: UploadFile | None = File(default=None, description="Deviation document (PDF, TXT, LOG)"),
+    text: str | None = Form(default=None, description="Pasted deviation text or email body"),
+    source_type: DeviationSource | None = Form(default=None, description="Source classification"),
+) -> ExtractionResponse:
+    content_type = request.headers.get("content-type", "")
+
+    # 1. JSON Request handling
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+        except Exception as json_err:
+            raise ValidationError(f"Malformed JSON request: {json_err}") from json_err
+
+        raw_text = body.get("text")
+        if raw_text is None or not str(raw_text).strip():
+            raise ValidationError("Pasted text content cannot be empty or whitespace only.")
+        raw_source = body.get("source_type")
+        source = (
+            DeviationSource(raw_source)
+            if raw_source in DeviationSource._value2member_map_
+            else DeviationSource.TEXT
+        )
+        return service.normalize_text(raw_text, declared_source=source)
+
+    # 2. File Upload handling
+    if file is not None and file.filename:
+        return await service.extract_from_file(file)
+
+    # 3. Form-data Text handling
+    if text is not None:
+        if not text.strip():
+            raise ValidationError("Pasted text content cannot be empty or whitespace only.")
+        return service.normalize_text(text, declared_source=source_type)
+
+    # 4. Neither file nor text provided -> Malformed request
+    raise PharmaOneError("Malformed request: either a document file ('file') or text content ('text') must be provided.")
 
 
 @router.post(

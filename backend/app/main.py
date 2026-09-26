@@ -6,7 +6,16 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, PharmaOneError, ValidationError
+from app.core.exceptions import (
+    DocumentExtractionError,
+    EmptyPdfError,
+    FileTooLargeError,
+    InvalidPdfError,
+    NotFoundError,
+    PharmaOneError,
+    UnsupportedFileTypeError,
+    ValidationError,
+)
 from app.core.logging import configure_logging, get_logger
 
 logger = get_logger("pharmaone")
@@ -49,6 +58,26 @@ def create_app() -> FastAPI:
     @app.exception_handler(NotFoundError)
     async def _not_found_handler(_: Request, exc: NotFoundError) -> JSONResponse:
         return JSONResponse(status_code=404, content={"detail": exc.message})
+
+    @app.exception_handler(UnsupportedFileTypeError)
+    async def _unsupported_file_handler(_: Request, exc: UnsupportedFileTypeError) -> JSONResponse:
+        return JSONResponse(status_code=415, content={"detail": exc.message})
+
+    @app.exception_handler(FileTooLargeError)
+    async def _file_too_large_handler(_: Request, exc: FileTooLargeError) -> JSONResponse:
+        return JSONResponse(status_code=413, content={"detail": exc.message})
+
+    @app.exception_handler(InvalidPdfError)
+    async def _invalid_pdf_handler(_: Request, exc: InvalidPdfError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": exc.message})
+
+    @app.exception_handler(EmptyPdfError)
+    async def _empty_pdf_handler(_: Request, exc: EmptyPdfError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": exc.message})
+
+    @app.exception_handler(DocumentExtractionError)
+    async def _extraction_error_handler(_: Request, exc: DocumentExtractionError) -> JSONResponse:
+        return JSONResponse(status_code=422, content={"detail": exc.message})
 
     @app.exception_handler(ValidationError)
     async def _validation_handler(_: Request, exc: ValidationError) -> JSONResponse:

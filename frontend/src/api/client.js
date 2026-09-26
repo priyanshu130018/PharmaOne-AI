@@ -28,6 +28,8 @@ function extractMessage(status, body) {
         })
         .join("; ");
     }
+    if (body.error && typeof body.error.message === "string") return body.error.message;
+    if (body.error && typeof body.error === "string") return body.error;
     if (typeof body.message === "string") return body.message;
   }
   return `Request failed with status ${status}`;
@@ -66,7 +68,46 @@ async function request(path, { method = "GET", body, signal } = {}) {
   return data;
 }
 
+async function requestMultipart(path, formData, { signal } = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    body: formData,
+    signal,
+  });
+
+  if (res.status === 204) return null;
+
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  if (!res.ok) {
+    throw new ApiError(extractMessage(res.status, data), res.status, data);
+  }
+  return data;
+}
+
 export const api = {
+  // Extract & normalize text from pasted text / email
+  extractText: (text, sourceType = "text") =>
+    request("/deviations/extract-text", {
+      method: "POST",
+      body: { text, source_type: sourceType },
+    }),
+
+  // Extract & normalize text from an uploaded document (PDF, TXT)
+  extractDocument: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return requestMultipart("/deviations/extract-text", formData);
+  },
+
   // AI Deviation Assistant: process raw content -> extraction + risk assessment.
   processDeviation: (content, source = "text") =>
     request("/deviations/process", { method: "POST", body: { content, source } }),
