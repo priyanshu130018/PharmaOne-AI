@@ -329,3 +329,28 @@ async def test_extract_plain_text_file(client: AsyncClient):
     assert data["source_type"] == "text"
     assert "Differential pressure drop" in data["extracted_text"]
     assert data["metadata"]["filename"] == "shift_report.txt"
+
+
+@pytest.mark.asyncio
+async def test_extract_very_long_input(client: AsyncClient):
+    """Pasting very long deviation text (e.g. 50,000 characters) processes safely."""
+    repeated_entry = "Batch B-9012 recorded intermittent pressure fluctuation of 0.4 bar.\n"
+    long_text = repeated_entry * 750  # ~52,500 characters
+    res = await client.post("/api/v1/deviations/extract-text", json={"text": long_text})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert data["metadata"]["character_count"] >= 50000
+    assert "Batch B-9012" in data["extracted_text"]
+
+
+@pytest.mark.asyncio
+async def test_extract_text_with_control_characters(client: AsyncClient):
+    """Pasting text with mixed line breaks and whitespace characters normalizes properly."""
+    text_with_breaks = "Deviation in room 4\r\n\r\nTemperature: 28C\r\nAction:\tImmediate shutdown.\r"
+    res = await client.post("/api/v1/deviations/extract-text", json={"text": text_with_breaks})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["success"] is True
+    assert "\r" not in data["extracted_text"]
+    assert "Deviation in room 4" in data["extracted_text"]

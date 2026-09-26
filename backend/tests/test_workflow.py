@@ -477,3 +477,43 @@ async def test_process_endpoint_returns_rich_rag_response(client: AsyncClient):
 
     # Verify human review disclaimer
     assert body["requires_human_review"] is True
+
+
+@pytest.mark.asyncio
+async def test_groq_unavailable_and_connection_refused_fallback():
+    """Verify that when Groq service is unavailable (e.g. 503 or ConnectionRefused),
+    the workflow seamlessly degrades to heuristic extraction with clear error notes."""
+    mock_client = MagicMock()
+    mock_client.chat.completions.create = AsyncMock(
+        side_effect=ConnectionRefusedError("Connection to Groq API endpoint refused (503 Service Unavailable)")
+    )
+
+    with patch("app.workflows.deviation_intake._get_groq_client", return_value=(mock_client, "llama-3.3-70b-versatile")):
+        state: DeviationWorkflowState = {
+            "raw_content": "Batch LOT-909 experienced pressure spike of 4.2 bar in filtration unit.",
+            "source": "text",
+            "is_valid": True,
+        }
+        res = await extract_deviation_node(state)
+        assert res["is_stub"] is True
+        assert res["provider"] == "stub"
+        assert "LLM extraction error" in res["extraction_error"]
+        assert res["raw_extraction_output"]["batch_lot_number"] == "LOT-909"
+
+
+@pytest.mark.asyncio
+async def test_rag_embedding_calculation_error_fallback():
+    """Verify that if vector calculation/similarity comparison encounters an unexpected error,
+    the workflow logs the issue, sets rag_available=False, and proceeds without crashing."""
+    with patch.object(RagService, "retrieve", side_effect=RuntimeError("Vector embedding math failure")):
+        state: DeviationWorkflowState = {
+            "is_valid": True,
+            "structured_deviation": {
+                "detailed_description": "Excursion during autoclave run",
+                "deviation_type": "equipment",
+            },
+        }
+        res = await retrieve_reference_context_node(state)
+        assert res["rag_available"] is False
+        assert res["retrieved_chunks"] == []
+        assert "RAG retrieval unavailable" in res["rag_notes"]

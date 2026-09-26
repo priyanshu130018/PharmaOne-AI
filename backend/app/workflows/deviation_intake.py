@@ -176,6 +176,58 @@ def _heuristic_fallback_extraction(content: str) -> dict[str, Any]:
     act_cond = _extract_field_regex(content, "actual", "actual condition", "observed")
 
     facts = [line.strip() for line in content.splitlines() if line.strip()][:5]
+
+    # Natural language extractors for parameters, ranges, duration, and actions
+    qa_notified = None
+    if re.search(r"\bqa\s+(?:was\s+)?notified\b", content, re.IGNORECASE):
+        qa_notified = True
+    elif re.search(r"\bqa\s+(?:was\s+)?not\s+notified\b", content, re.IGNORECASE):
+        qa_notified = False
+
+    duration = None
+    m_dur = re.search(
+        r"\b(?:for|duration(?:\s*of)?)\s+(?:approximately\s+|approx\.?\s+)?([0-9]+(?:\.[0-9]+)?\s*(?:minutes?|hours?|mins?|hrs?|seconds?|secs?|days?))\b",
+        content,
+        re.IGNORECASE,
+    )
+    if m_dur:
+        duration = m_dur.group(1).strip()
+
+    if not exp_cond:
+        m_range = re.search(
+            r"\bapproved\s*(?:temperature|pressure|speed|pH)?\s*(?:range|limit|spec(?:ification)?)\s*(?:was|is)?\s*[:\-]?\s*([0-9\.\–\-\s°CcFf]+)",
+            content,
+            re.IGNORECASE,
+        )
+        if m_range:
+            exp_cond = m_range.group(1).rstrip(".,;:").strip()
+
+    if not act_cond:
+        m_act = re.search(
+            r"\bactual\s*(?:temperature|pressure|speed|pH)?\s*(?:reached|was|is)?\s*[:\-]?\s*([0-9\.\–\-\s°CcFf]+)",
+            content,
+            re.IGNORECASE,
+        )
+        if m_act:
+            act_cond = m_act.group(1).rstrip(".,;:").strip()
+
+    if not param:
+        if re.search(r"\btemperature\b", content, re.IGNORECASE):
+            param = "Temperature"
+        elif re.search(r"\bpressure\b", content, re.IGNORECASE):
+            param = "Pressure"
+        elif re.search(r"\bph\b", content, re.IGNORECASE):
+            param = "pH"
+
+    if not action:
+        m_act_sent = re.search(
+            r"\b(?:production|line|process|operation)\s+was\s+stopped[^.\n]*",
+            content,
+            re.IGNORECASE,
+        )
+        if m_act_sent:
+            action = m_act_sent.group(0).strip()
+
     missing = []
     if not batch:
         missing.append("batch_lot_number")
@@ -201,9 +253,9 @@ def _heuristic_fallback_extraction(content: str) -> dict[str, Any]:
         "parameter": param,
         "approved_range": exp_cond,
         "actual_value": act_cond,
-        "duration": None,
+        "duration": duration,
         "immediate_action": action,
-        "qa_notified": None,
+        "qa_notified": qa_notified,
         "extracted_facts": facts,
         "inferred_information": [],
         "missing_information": missing,

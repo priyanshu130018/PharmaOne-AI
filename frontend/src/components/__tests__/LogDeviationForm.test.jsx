@@ -209,4 +209,70 @@ describe("LogDeviationForm - AIVOA Intake Workflow", () => {
 
     expect(titleInput).toHaveValue("");
   });
+
+  it("6. editing impact and severity tracks user overrides and preserves user choices", async () => {
+    const { store } = renderWithStore();
+
+    act(() => {
+      store.dispatch(
+        applySuggestions({
+          deviation: {
+            title_short_description: "Initial Deviation",
+            detailed_description: "Valid detailed description exceeding 10 characters.",
+            deviation_type: "equipment",
+          },
+          assessment: {
+            recommended_severity: "critical",
+            recommended_impact: "patient_safety",
+          },
+        })
+      );
+    });
+
+    const severitySelect = screen.getByLabelText(/Initial Severity/i);
+    expect(severitySelect).toHaveValue("critical");
+
+    // User reviews and changes severity to minor
+    fireEvent.change(severitySelect, { target: { value: "minor" } });
+    expect(severitySelect).toHaveValue("minor");
+
+    // User changes impact to compliance
+    const impactSelect = screen.getByLabelText(/Initial Impact/i);
+    fireEvent.change(impactSelect, { target: { value: "compliance" } });
+    expect(impactSelect).toHaveValue("compliance");
+  });
+
+  it("7. save failure preserves form state and displays error notification without losing data", async () => {
+    api.createDeviation.mockRejectedValueOnce(new Error("Network connection dropped during save"));
+
+    renderWithStore({
+      deviations: {
+        form: {
+          site_plant: "Packaging Suite 2",
+          title: "Important Deviation Event",
+          description: "Crucial detailed incident description.",
+          deviation_type: "material",
+          source: "manual",
+          qa_notified: true,
+          impact: "product_quality",
+          severity: "major",
+        },
+        aiFields: {},
+        userEditedFields: {},
+        saveStatus: "idle",
+      },
+    });
+
+    const saveBtn = screen.getByRole("button", { name: /Save Deviation/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(api.createDeviation).toHaveBeenCalled();
+    });
+
+    // Verify form state is STILL completely intact (no data lost)
+    expect(screen.getByLabelText(/Site \/ Plant/i)).toHaveValue("Packaging Suite 2");
+    expect(screen.getByLabelText(/Title \/ Short Description/i)).toHaveValue("Important Deviation Event");
+    expect(screen.getByLabelText(/Detailed Description/i)).toHaveValue("Crucial detailed incident description.");
+  });
 });

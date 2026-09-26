@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=settings.cors_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -86,6 +86,14 @@ def create_app() -> FastAPI:
     @app.exception_handler(PharmaOneError)
     async def _domain_handler(_: Request, exc: PharmaOneError) -> JSONResponse:
         return JSONResponse(status_code=400, content={"detail": exc.message})
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(_: Request, exc: Exception) -> JSONResponse:
+        logger.error("Unhandled exception: %s", exc, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "An internal server error occurred. Please try again or contact support."},
+        )
 
     @app.get("/", tags=["meta"], summary="API root")
     async def root() -> dict[str, str]:
