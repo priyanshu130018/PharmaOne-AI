@@ -52,6 +52,7 @@ class Deviation(Base, TimestampMixin):
     # a later step. They are here so the schema is ready without over-building.
     company_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
     site_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True, index=True)
+    site_plant: Mapped[str | None] = mapped_column(String(160), nullable=True)
     department: Mapped[str | None] = mapped_column(String(120), nullable=True)
     responsible_team: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
@@ -87,9 +88,97 @@ class Deviation(Base, TimestampMixin):
         _enum_col(DeviationStatus, 16), nullable=False, default=DeviationStatus.SUBMITTED
     )
 
+    # --- AI specific recommendations & evidence columns (traceability) ---
+    ai_recommended_impact: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    ai_recommended_severity: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    ai_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ai_evidence: Mapped[list | dict | None] = mapped_column(JSONVariant, nullable=True)
+
     # --- AI snapshots (audit of what the assistant proposed) ---
     ai_extraction: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
     ai_assessment: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
+
+    # --- AIVOA Aliases for property access ---
+    @property
+    def date_of_occurrence(self) -> date | None:
+        return self.occurred_on
+
+    @date_of_occurrence.setter
+    def date_of_occurrence(self, value: date | None) -> None:
+        if value is not None or not hasattr(self, "occurred_on") or self.occurred_on is None:
+            self.occurred_on = value
+
+    @property
+    def title_short_description(self) -> str:
+        return self.title
+
+    @title_short_description.setter
+    def title_short_description(self, value: str | None) -> None:
+        if value is not None or not hasattr(self, "title") or self.title is None:
+            self.title = value
+
+    @property
+    def related_product_material(self) -> str | None:
+        return self.product_name
+
+    @related_product_material.setter
+    def related_product_material(self, value: str | None) -> None:
+        if value is not None or not hasattr(self, "product_name") or self.product_name is None:
+            self.product_name = value
+
+    @property
+    def batch_lot_number(self) -> str | None:
+        return self.batch_number
+
+    @batch_lot_number.setter
+    def batch_lot_number(self, value: str | None) -> None:
+        if value is not None or not hasattr(self, "batch_number") or self.batch_number is None:
+            self.batch_number = value
+
+    @property
+    def detailed_description(self) -> str:
+        return self.description
+
+    @detailed_description.setter
+    def detailed_description(self, value: str | None) -> None:
+        if value is not None or not hasattr(self, "description") or self.description is None:
+            self.description = value
+
+    @property
+    def approved_range(self) -> str | None:
+        return self.expected_condition
+
+    @approved_range.setter
+    def approved_range(self, value: str | None) -> None:
+        if value is not None or not hasattr(self, "expected_condition") or self.expected_condition is None:
+            self.expected_condition = value
+
+    @property
+    def actual_value(self) -> str | None:
+        return self.actual_condition
+
+    @actual_value.setter
+    def actual_value(self, value: str | None) -> None:
+        if value is not None or not hasattr(self, "actual_condition") or self.actual_condition is None:
+            self.actual_condition = value
+
+    @property
+    def initial_impact(self) -> Impact | None:
+        return self.impact
+
+    @initial_impact.setter
+    def initial_impact(self, value: Impact | None) -> None:
+        if value is not None or not hasattr(self, "impact") or self.impact is None:
+            self.impact = value
+
+    @property
+    def initial_severity(self) -> Severity | None:
+        return self.severity
+
+    @initial_severity.setter
+    def initial_severity(self, value: Severity | None) -> None:
+        if value is not None or not hasattr(self, "severity") or self.severity is None:
+            self.severity = value
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<Deviation {self.reference} status={self.status}>"
