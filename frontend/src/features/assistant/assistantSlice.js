@@ -1,6 +1,52 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { api } from "../../api/client.js";
 import { applySuggestions } from "../deviations/deviationsSlice.js";
+import { setAssessment } from "../assessment/assessmentSlice.js";
+import { setStage, setExtractedContent, setProcessingError } from "../ai/aiProcessingSlice.js";
+
+// Helper for user-friendly error formatting
+export function formatHumanReadableError(err) {
+  const rawMsg = typeof err === "string" ? err : err?.message || "";
+  const lower = rawMsg.toLowerCase();
+
+  if (lower.includes("ocr") && (lower.includes("unavailable") || lower.includes("failed"))) {
+    return {
+      title: "Processing Error",
+      message: "The document appears to be a scanned image and OCR is unavailable. Please upload a digital PDF or paste the text directly.",
+      code: "OCR_UNAVAILABLE",
+    };
+  }
+
+  if (lower.includes("unsupported") || lower.includes("file type")) {
+    return {
+      title: "Processing Error",
+      message: "Unsupported file type. Please upload a standard PDF, TXT, or email document.",
+      code: "UNSUPPORTED_FILE_TYPE",
+    };
+  }
+
+  if (lower.includes("oversized") || lower.includes("exceeds")) {
+    return {
+      title: "Processing Error",
+      message: "The uploaded file exceeds the 10MB limit. Please provide a smaller document.",
+      code: "FILE_OVERSIZED",
+    };
+  }
+
+  if (lower.includes("timeout") || lower.includes("network")) {
+    return {
+      title: "Processing Error",
+      message: rawMsg || "Network timeout during upload. Please check your connection and retry.",
+      code: "NETWORK_TIMEOUT",
+    };
+  }
+
+  return {
+    title: "Processing Error",
+    message: rawMsg || "An error occurred during deviation processing. Please check the content and retry.",
+    code: "PROCESS_ERROR",
+  };
+}
 
 // Multi-stage deviation extraction and AI analysis pipeline
 export const processDeviationInput = createAsyncThunk(
@@ -11,49 +57,35 @@ export const processDeviationInput = createAsyncThunk(
       let extractionRes;
 
       if (mode === "upload" && file) {
-        // Stage 1: Uploading
+        // Stage 1: Processing document
         dispatch(
           setProcessingStage({
-            stage: "uploading",
-            message: "Uploading document…",
+            stage: "processing_document",
+            message: "Processing document: Extracting text…",
             sessionId,
           })
         );
-
-        // Stage 2: Checking document
         dispatch(
-          setProcessingStage({
-            stage: "checking",
-            message: "Checking document format and integrity…",
-            sessionId,
-          })
-        );
-
-        // Stage 3: Extracting text
-        dispatch(
-          setProcessingStage({
-            stage: "extracting",
-            message: "Extracting text from document…",
-            sessionId,
+          setStage({
+            stage: "processing_document",
+            message: "Processing document: Extracting text…",
           })
         );
 
         extractionRes = await api.extractDocument(file);
       } else {
-        // Pasted text / email flow
+        // Stage: Extracting deviation
         dispatch(
           setProcessingStage({
-            stage: "checking",
-            message: "Checking document and validating input…",
+            stage: "extracting_deviation",
+            message: "Extracting text and normalizing deviation content…",
             sessionId,
           })
         );
-
         dispatch(
-          setProcessingStage({
-            stage: "extracting",
-            message: "Normalizing text content…",
-            sessionId,
+          setStage({
+            stage: "extracting_deviation",
+            message: "Extracting text and normalizing deviation content…",
           })
         );
 
@@ -64,22 +96,47 @@ export const processDeviationInput = createAsyncThunk(
         const errorMsg =
           extractionRes?.error?.message ||
           "Could not extract usable text from the provided document.";
+        const formatted = formatHumanReadableError(errorMsg);
+        dispatch(setProcessingError(formatted));
         return rejectWithValue({
-          message: errorMsg,
-          code: extractionRes?.error?.code || "EXTRACTION_FAILED",
+          message: formatted.message,
+          title: formatted.title,
+          code: extractionRes?.error?.code || formatted.code,
           stage: "extracting",
           sessionId,
         });
       }
 
       dispatch(setExtractedResult(extractionRes));
+      dispatch(setExtractedContent(extractionRes));
 
-      // Stage 4: Preparing AI analysis
+      // Stage: Retrieving references
       dispatch(
         setProcessingStage({
-          stage: "analyzing",
-          message: "Preparing AI analysis and risk assessment…",
+          stage: "retrieving_references",
+          message: "Retrieving references from pharmaceutical SOPs…",
           sessionId,
+        })
+      );
+      dispatch(
+        setStage({
+          stage: "retrieving_references",
+          message: "Retrieving references from pharmaceutical SOPs…",
+        })
+      );
+
+      // Stage: Assessing impact
+      dispatch(
+        setProcessingStage({
+          stage: "assessing_impact",
+          message: "Assessing impact on quality, CQAs, and patient safety…",
+          sessionId,
+        })
+      );
+      dispatch(
+        setStage({
+          stage: "assessing_impact",
+          message: "Assessing impact on quality, CQAs, and patient safety…",
         })
       );
 
@@ -88,10 +145,26 @@ export const processDeviationInput = createAsyncThunk(
         extractionRes.source_type || sourceType
       );
 
+      // Stage: Assessing severity
+      dispatch(
+        setProcessingStage({
+          stage: "assessing_severity",
+          message: "Assessing severity per ICH Q9 risk criteria…",
+          sessionId,
+        })
+      );
+      dispatch(
+        setStage({
+          stage: "assessing_severity",
+          message: "Assessing severity per ICH Q9 risk criteria…",
+        })
+      );
+
       // Automatically populate the left-hand form with extracted fields
-      if (aiRes?.extraction || aiRes?.assessment) {
+      if (aiRes?.deviation || aiRes?.extraction || aiRes?.assessment) {
         dispatch(
           applySuggestions({
+            deviation: aiRes.deviation,
             extraction: aiRes.extraction,
             assessment: aiRes.assessment,
             source: extractionRes.source_type || sourceType,
@@ -99,15 +172,38 @@ export const processDeviationInput = createAsyncThunk(
         );
       }
 
+      // Update dedicated assessment slice
+      if (aiRes) {
+        dispatch(setAssessment(aiRes));
+      }
+
+      // Final stage: Ready for review
+      dispatch(
+        setProcessingStage({
+          stage: "ready_for_review",
+          message: "Ready for review: Extracted fields automatically populated into deviation form.",
+          sessionId,
+        })
+      );
+      dispatch(
+        setStage({
+          stage: "ready_for_review",
+          message: "Ready for review: Extracted fields automatically populated into deviation form.",
+        })
+      );
+
       return {
         extractionRes,
         aiRes,
         sessionId,
       };
     } catch (err) {
+      const formatted = formatHumanReadableError(err);
+      dispatch(setProcessingError(formatted));
       return rejectWithValue({
-        message: err.message || "Failed to process deviation input.",
-        code: err.detail || err.name || "PROCESS_ERROR",
+        message: formatted.message,
+        title: formatted.title,
+        code: formatted.code,
         stage: "processing",
         sessionId,
       });
@@ -138,7 +234,7 @@ const initialInputState = {
 
 const initialProcessingState = {
   status: "idle", // "idle" | "loading" | "succeeded" | "failed"
-  stage: "idle", // "idle" | "uploading" | "checking" | "extracting" | "analyzing" | "succeeded" | "failed"
+  stage: "ready", // "ready" | "processing_document" | "extracting_deviation" | "retrieving_references" | "assessing_impact" | "assessing_severity" | "ready_for_review"
   stageMessage: "",
 };
 
@@ -146,7 +242,7 @@ const initialExtractedTextStatus = {
   success: false,
   extractedText: "",
   sourceType: "pdf",
-  metadata: null, // { filename, page_count, character_count, ocr_applied, ocr_available, warnings }
+  metadata: null,
 };
 
 const initialSessionState = {
@@ -162,21 +258,18 @@ const initialRetryState = {
 };
 
 const initialState = {
-  // Required feature slices
   input: { ...initialInputState },
   processing: { ...initialProcessingState },
   extractedTextStatus: { ...initialExtractedTextStatus },
   error: null,
   retry: { ...initialRetryState },
   currentProcessingSession: { ...initialSessionState },
-
-  // Downstream analysis compatibility
-  rawContent: "",
-  status: "idle",
   extraction: null,
   assessment: null,
   meta: null,
   applied: false,
+  status: "idle",
+  rawContent: "",
 };
 
 const assistantSlice = createSlice({
@@ -185,51 +278,52 @@ const assistantSlice = createSlice({
   reducers: {
     setInputMode(state, action) {
       state.input.mode = action.payload;
-      state.input.sourceType = action.payload === "upload" ? "pdf" : "text";
-      state.error = null;
+      if (action.payload === "paste" && state.input.sourceType === "pdf") {
+        state.input.sourceType = "text";
+      } else if (action.payload === "upload") {
+        state.input.sourceType = "pdf";
+      }
     },
     setPastedText(state, action) {
       state.input.pastedText = action.payload;
-      state.rawContent = action.payload;
-      state.error = null;
     },
-    setRawContent(state, action) {
-      state.input.pastedText = action.payload;
-      state.rawContent = action.payload;
-      state.error = null;
+    setSourceType(state, action) {
+      state.input.sourceType = action.payload;
     },
     setFileInfo(state, action) {
       state.input.fileInfo = action.payload;
-      state.error = null;
     },
     clearFile(state) {
       state.input.fileInfo = null;
-      state.error = null;
     },
     setProcessingStage(state, action) {
       const { stage, message, sessionId } = action.payload;
       state.processing.stage = stage;
-      state.processing.stageMessage = message;
-      if (sessionId && !state.currentProcessingSession.sessionId) {
-        state.currentProcessingSession.sessionId = sessionId;
-        state.currentProcessingSession.startedAt = new Date().toISOString();
-      }
+      if (message) state.processing.stageMessage = message;
+      if (sessionId) state.currentProcessingSession.sessionId = sessionId;
     },
     setExtractedResult(state, action) {
-      const res = action.payload;
+      const { success, extracted_text, source_type, metadata } = action.payload;
       state.extractedTextStatus = {
-        success: res.success,
-        extractedText: res.extracted_text,
-        sourceType: res.source_type,
-        metadata: res.metadata,
+        success,
+        extractedText: extracted_text,
+        sourceType: source_type,
+        metadata,
       };
-      state.rawContent = res.extracted_text;
+      state.rawContent = extracted_text;
+    },
+    clearAssistant(state) {
+      return {
+        ...initialState,
+        input: { ...initialInputState },
+        processing: { ...initialProcessingState },
+        extractedTextStatus: { ...initialExtractedTextStatus },
+        retry: { ...initialRetryState },
+        currentProcessingSession: { ...initialSessionState },
+      };
     },
     markApplied(state) {
       state.applied = true;
-    },
-    clearAssistant() {
-      return { ...initialState };
     },
   },
   extraReducers: (builder) => {
@@ -240,7 +334,7 @@ const assistantSlice = createSlice({
         state.error = null;
         state.applied = false;
         state.retry.canRetry = false;
-        // Keep payload for retry (omitting raw file binary to stay serializable)
+
         const arg = action.meta.arg;
         state.retry.lastPayload = {
           mode: arg.mode,
@@ -257,8 +351,9 @@ const assistantSlice = createSlice({
       .addCase(processDeviationInput.fulfilled, (state, action) => {
         const { extractionRes, aiRes, sessionId } = action.payload;
         state.processing.status = "succeeded";
-        state.processing.stage = "succeeded";
-        state.processing.stageMessage = "AI analysis complete — fields applied to form.";
+        state.processing.stage = "ready_for_review";
+        state.processing.stageMessage =
+          "Extracted fields automatically populated into deviation form.";
         state.status = "succeeded";
 
         if (extractionRes) {
@@ -296,9 +391,16 @@ const assistantSlice = createSlice({
           typeof errPayload === "string"
             ? errPayload
             : errPayload?.message || action.error?.message || "Processing failed";
+        const title = errPayload?.title || "Processing Error";
 
         state.processing.stageMessage = msg;
-        state.error = msg;
+        state.error = {
+          title,
+          message: msg,
+          code: errPayload?.code || "PROCESSING_FAILED",
+          stage: errPayload?.stage || state.processing.stage,
+        };
+
         state.retry.canRetry = true;
         state.retry.retryCount += 1;
         state.currentProcessingSession.completedAt = new Date().toISOString();
@@ -309,13 +411,13 @@ const assistantSlice = createSlice({
 export const {
   setInputMode,
   setPastedText,
-  setRawContent,
+  setSourceType,
   setFileInfo,
   clearFile,
   setProcessingStage,
   setExtractedResult,
-  markApplied,
   clearAssistant,
+  markApplied,
 } = assistantSlice.actions;
 
 export default assistantSlice.reducer;

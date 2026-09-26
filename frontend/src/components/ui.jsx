@@ -1,13 +1,16 @@
 import React from "react";
 
-export function Field({ label, htmlFor, error, help, children, required }) {
+export function Field({ label, htmlFor, error, help, children, required, badge }) {
   return (
     <div>
       {label && (
-        <label htmlFor={htmlFor} className="field-label">
-          {label}
-          {required && <span className="ml-1 text-red-500">*</span>}
-        </label>
+        <div className="mb-1 flex items-center justify-between gap-1">
+          <label htmlFor={htmlFor} className="field-label mb-0">
+            {label}
+            {required && <span className="ml-1 text-red-500">*</span>}
+          </label>
+          {badge}
+        </div>
       )}
       {children}
       {error ? (
@@ -97,4 +100,39 @@ export function SectionHeading({ children }) {
   return (
     <h3 className="section-title mt-1 border-b border-slate-100 pb-1">{children}</h3>
   );
+}
+
+export function AiFieldBadge({ isAi, isUserEdited }) {
+  if (isUserEdited) {
+    return (
+      <span
+        title="Manually edited by user"
+        className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
+      >
+        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
+          />
+        </svg>
+        Modified
+      </span>
+    );
+  }
+  if (isAi) {
+    return (
+      <span
+        title="Automatically extracted by AI assistant"
+        className="inline-flex items-center gap-1 rounded border border-brand-200/80 bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700"
+      >
+        <svg className="h-2.5 w-2.5 text-brand-600" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" />
+        </svg>
+        AI extracted
+      </span>
+    );
+  }
+  return null;
 }

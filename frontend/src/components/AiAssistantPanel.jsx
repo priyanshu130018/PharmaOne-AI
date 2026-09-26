@@ -13,20 +13,41 @@ import { applySuggestions } from "../features/deviations/deviationsSlice.js";
 import { Button, Badge } from "./ui.jsx";
 import AssistantResult from "./AssistantResult.jsx";
 
-const SAMPLE_TEXT = `Sterility test failure observed for the morning batch. Possible microbial
-contamination detected during testing of the filled vials.
-Product: SterileInjectable
-Batch: B-2026-042
+const SAMPLE_TEXT = `Sterility test failure observed for morning batch LOT-2026-042 in Sterile Production.
+Possible microbial contamination detected during testing of filled vials in Autoclave AC-02.
+Product: SterileInjectable 100mL
 Equipment: Autoclave AC-02
 Department: Sterile Manufacturing
-The affected units were placed on hold pending QA review. Containment action initiated.`;
+Chamber temperature dropped to 118.5°C during the 20-minute sterilization hold phase (approved range: 121.1°C +/- 0.5°C).
+Immediate action: Cycle aborted, entire autoclave load placed on hold under tag Q-882 pending QA review. QA notified.`;
 
-const STAGES = [
-  { key: "uploading", label: "Uploading document…" },
-  { key: "checking", label: "Checking document…" },
-  { key: "extracting", label: "Extracting text…" },
-  { key: "analyzing", label: "Preparing AI analysis…" },
+export const AIVOA_STAGES = [
+  { key: "ready", label: "Ready", sub: "Awaiting input" },
+  { key: "processing_document", label: "Processing document", sub: "Extracting text…" },
+  { key: "extracting_deviation", label: "Extracting deviation", sub: "Structuring AIVOA fields" },
+  { key: "retrieving_references", label: "Retrieving references", sub: "SOP vector search" },
+  { key: "assessing_impact", label: "Assessing impact", sub: "CQAs & risk context" },
+  { key: "assessing_severity", label: "Assessing severity", sub: "ICH Q9 criteria" },
+  { key: "ready_for_review", label: "Ready for review", sub: "Fields populated" },
 ];
+
+function getStageIndex(currentStage) {
+  const map = {
+    ready: 0,
+    uploading: 1,
+    checking: 1,
+    extracting: 1,
+    processing_document: 1,
+    extracting_deviation: 2,
+    retrieving_references: 3,
+    assessing_impact: 4,
+    assessing_severity: 5,
+    analyzing: 5,
+    ready_for_review: 6,
+    succeeded: 6,
+  };
+  return map[currentStage] ?? 0;
+}
 
 function formatBytes(bytes) {
   if (!bytes) return "0 B";
@@ -115,33 +136,29 @@ export default function AiAssistantPanel() {
       );
     } else {
       if (!input.pastedText || input.pastedText.trim().length < 5) return;
+      const isEmail = /From:\s*|Subject:\s*|To:\s*/i.test(input.pastedText);
       dispatch(
         processDeviationInput({
           text: input.pastedText,
           mode: "paste",
-          sourceType: input.sourceType || "text",
+          sourceType: isEmail ? "email" : "text",
         })
       );
     }
   };
 
   const handleRetry = () => {
-    if (input.mode === "upload" && selectedFileObj) {
+    if (retry.lastPayload) {
       dispatch(
         processDeviationInput({
-          file: selectedFileObj,
-          mode: "upload",
-          sourceType: "pdf",
+          file: selectedFileObj || retry.lastPayload.file,
+          text: retry.lastPayload.text || input.pastedText,
+          sourceType: retry.lastPayload.sourceType || input.sourceType,
+          mode: retry.lastPayload.mode || input.mode,
         })
       );
-    } else if (input.pastedText && input.pastedText.trim().length >= 5) {
-      dispatch(
-        processDeviationInput({
-          text: input.pastedText,
-          mode: "paste",
-          sourceType: input.sourceType || "text",
-        })
-      );
+    } else {
+      handleProcess();
     }
   };
 
@@ -154,6 +171,7 @@ export default function AiAssistantPanel() {
   const handleApplyManually = () => {
     dispatch(
       applySuggestions({
+        deviation: meta?.deviation,
         extraction,
         assessment,
         source: extractedTextStatus?.sourceType || input.sourceType || "text",
@@ -167,20 +185,27 @@ export default function AiAssistantPanel() {
     ((input.mode === "upload" && Boolean(selectedFileObj)) ||
       (input.mode === "paste" && input.pastedText.trim().length >= 5));
 
-  // Determine stage progression index for genuine backend stage display
-  const currentStageIdx = STAGES.findIndex((s) => s.key === processing.stage);
+  const currentStageIdx = getStageIndex(processing.stage);
 
   return (
-    <section className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm">
+    <section
+      aria-label="AI Deviation Assistant Panel"
+      className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm"
+    >
       {/* Header */}
       <header className="border-b border-slate-200 px-5 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-slate-800">
-              AI Deviation Assistant
-            </h2>
-            <p className="text-xs text-slate-500">
-              Primary intake channel: upload a PDF or paste text/email to extract fields and run AI analysis.
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-semibold text-slate-800">
+                AI Deviation Assistant
+              </h2>
+              <span className="rounded-full bg-brand-50 border border-brand-200/80 px-2 py-0.5 text-[10px] font-semibold text-brand-700">
+                AIVOA Workflow
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Primary intake channel: upload deviation PDF or paste text to auto-populate form.
             </p>
           </div>
           {currentProcessingSession?.sessionId && (
@@ -190,7 +215,7 @@ export default function AiAssistantPanel() {
           )}
         </div>
 
-        {/* Input Mode Selector Tabs */}
+        {/* Mode Selector Tabs */}
         <div className="mt-3 flex rounded-lg bg-slate-100 p-1 text-xs font-medium">
           <button
             type="button"
@@ -221,6 +246,7 @@ export default function AiAssistantPanel() {
 
       {/* Main Body */}
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+        
         {/* Mode 1: Document Upload */}
         {input.mode === "upload" && (
           <div className="space-y-3">
@@ -228,7 +254,7 @@ export default function AiAssistantPanel() {
               type="file"
               ref={fileInputRef}
               onChange={handleFileChange}
-              accept=".pdf,.txt,.log"
+              accept=".pdf,.txt,.log,.eml"
               className="hidden"
               id="pdf-upload-input"
             />
@@ -246,12 +272,7 @@ export default function AiAssistantPanel() {
                 }`}
               >
                 <div className="mb-2 rounded-full bg-slate-100 p-3 text-slate-600">
-                  <svg
-                    className="h-6 w-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
+                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -260,27 +281,34 @@ export default function AiAssistantPanel() {
                     />
                   </svg>
                 </div>
-                <p className="text-sm font-medium text-slate-700">
-                  Click to upload or drag & drop deviation report
+                <p className="text-xs font-semibold text-slate-700">
+                  Drop deviation PDF, scanned report, or document here
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Supported formats: PDF (.pdf), plain text (.txt) · Max file size: 10 MB
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Supports PDF (digital or scanned with OCR), TXT, EML up to 10MB
                 </p>
-                <p className="mt-1 text-[11px] text-slate-400 italic">
-                  Scanned documents are automatically processed via safe OCR fallback.
-                </p>
+                <span className="mt-3 inline-block rounded bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
+                  Browse Files
+                </span>
               </div>
             ) : (
               <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700 font-bold text-xs uppercase">
-                    {selectedFileObj.name.split(".").pop()}
+                <div className="flex items-center gap-3 truncate">
+                  <div className="rounded bg-brand-100 p-2 text-brand-700">
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-800">
+                  <div className="truncate">
+                    <p className="truncate text-xs font-medium text-slate-800">
                       {selectedFileObj.name}
                     </p>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-[10px] text-slate-400">
                       {formatBytes(selectedFileObj.size)}
                     </p>
                   </div>
@@ -289,15 +317,11 @@ export default function AiAssistantPanel() {
                   <button
                     type="button"
                     onClick={handleRemoveFile}
-                    className="ml-3 rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                    className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
                     title="Remove file"
                   >
-                    <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path
-                        fillRule="evenodd"
-                        d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
-                        clipRule="evenodd"
-                      />
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 )}
@@ -314,7 +338,7 @@ export default function AiAssistantPanel() {
                 htmlFor="pasted-content"
                 className="text-xs font-semibold uppercase tracking-wide text-slate-500"
               >
-                Deviation Content (Report or Email)
+                Deviation Content (Report, Email, Shift Log)
               </label>
               <button
                 type="button"
@@ -330,8 +354,8 @@ export default function AiAssistantPanel() {
               rows={7}
               value={input.pastedText}
               onChange={(e) => dispatch(setPastedText(e.target.value))}
-              placeholder="Paste deviation description, shift log, or notification email body here…"
-              className="field-input resize-y"
+              placeholder="Paste deviation description, shift log, or notification email body here… (min 5 characters)"
+              className="field-input resize-y font-mono text-xs leading-relaxed"
               disabled={loading}
             />
             <div className="flex justify-end text-xs text-slate-400">
@@ -363,12 +387,12 @@ export default function AiAssistantPanel() {
           )}
         </div>
 
-        {/* Loading / Progress State (Corresponding to actual backend stages) */}
+        {/* Real Processing Stage Progression Stepper (No fake percentages) */}
         {loading && (
           <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-4 space-y-3">
             <div className="flex items-center gap-2">
               <svg
-                className="h-4 w-4 animate-spin text-brand-600"
+                className="h-4 w-4 animate-spin text-brand-600 shrink-0"
                 fill="none"
                 viewBox="0 0 24 24"
               >
@@ -386,37 +410,42 @@ export default function AiAssistantPanel() {
                   d="M4 12a8 8 0 018-8v8H4z"
                 />
               </svg>
-              <span className="text-sm font-semibold text-brand-900">
-                {processing.stageMessage || "Processing deviation…"}
+              <span className="text-xs font-semibold text-brand-900">
+                {processing.stageMessage || "Processing document: Extracting text…"}
               </span>
             </div>
 
-            {/* Stage Progress indicators (No fake percentages, actual stages) */}
-            <div className="grid grid-cols-2 gap-2 text-xs pt-1 sm:grid-cols-4">
-              {STAGES.map((stg, idx) => {
-                const isActive = stg.key === processing.stage;
-                const isPassed = currentStageIdx > idx;
+            {/* Stage Progression Cards */}
+            <div className="grid grid-cols-2 gap-1.5 text-xs sm:grid-cols-3 md:grid-cols-4">
+              {AIVOA_STAGES.filter((s) => s.key !== "ready").map((stg, idx) => {
+                const stageIdxInList = idx + 1;
+                const isActive = stageIdxInList === currentStageIdx;
+                const isPassed = currentStageIdx > stageIdxInList;
+
                 return (
                   <div
                     key={stg.key}
-                    className={`rounded border px-2 py-1.5 transition ${
+                    className={`rounded border p-2 transition text-left ${
                       isActive
-                        ? "border-brand-500 bg-white text-brand-700 font-semibold shadow-sm"
+                        ? "border-brand-500 bg-white text-brand-700 font-semibold shadow-xs"
                         : isPassed
-                        ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                        ? "border-emerald-300 bg-emerald-50 text-emerald-800"
                         : "border-slate-200 bg-slate-50 text-slate-400"
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
                       {isPassed ? (
-                        <span>✓</span>
+                        <span className="font-bold text-emerald-600">✓</span>
                       ) : isActive ? (
-                        <span className="h-1.5 w-1.5 rounded-full bg-brand-600 animate-pulse" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-brand-600 animate-pulse shrink-0" />
                       ) : (
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-300" />
+                        <span className="h-1.5 w-1.5 rounded-full bg-slate-300 shrink-0" />
                       )}
-                      <span className="truncate">{stg.label.replace("…", "")}</span>
+                      <span className="truncate text-[11px]">{stg.label}</span>
                     </div>
+                    <p className="text-[10px] mt-0.5 truncate text-slate-500 font-normal">
+                      {stg.sub}
+                    </p>
                   </div>
                 );
               })}
@@ -424,7 +453,7 @@ export default function AiAssistantPanel() {
           </div>
         )}
 
-        {/* Error State with Structured Message & Retry Action */}
+        {/* Error State with Structured Message & One-Click Retry */}
         {error && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-2">
             <div className="flex items-start justify-between">
@@ -440,7 +469,7 @@ export default function AiAssistantPanel() {
                     clipRule="evenodd"
                   />
                 </svg>
-                <span>Processing Error</span>
+                <span>{typeof error === "object" && error.title ? error.title : "Processing Error"}</span>
               </div>
               {retry.canRetry && (
                 <button
@@ -459,8 +488,12 @@ export default function AiAssistantPanel() {
                 </button>
               )}
             </div>
-            <p className="text-xs text-red-700">{error}</p>
-            {error.toLowerCase().includes("ocr") && (
+
+            <p className="text-xs text-red-700">
+              {typeof error === "object" ? error.message : error}
+            </p>
+
+            {(typeof error === "object" ? error.message : error).toLowerCase().includes("ocr") && (
               <div className="pt-1">
                 <button
                   type="button"
@@ -474,7 +507,7 @@ export default function AiAssistantPanel() {
           </div>
         )}
 
-        {/* Extracted Content Processing Indication */}
+        {/* Extracted Content & Auto-Population Success Banner */}
         {hasExtractedText && (
           <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -510,8 +543,8 @@ export default function AiAssistantPanel() {
             </div>
 
             {/* Indication of automated population into the left form */}
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
-              <svg className="h-4 w-4 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium pt-1">
+              <svg className="h-4 w-4 shrink-0 text-emerald-600" viewBox="0 0 20 20" fill="currentColor">
                 <path
                   fillRule="evenodd"
                   d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"

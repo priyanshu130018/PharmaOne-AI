@@ -37,6 +37,11 @@ export function buildCreatePayload(form, aiSnapshot) {
     if (v) payload[f] = v;
   });
 
+  // If site_plant is populated and department is not set, use site_plant as department location
+  if (form.site_plant && !payload.department) {
+    payload.department = form.site_plant.trim();
+  }
+
   OPTIONAL_ENUM_FIELDS.forEach((f) => {
     if (form[f]) payload[f] = form[f];
   });
@@ -62,4 +67,12 @@ export function validateForm(form) {
     errors.deviation_type = "Select a deviation type.";
   }
   return errors;
+}
+
+export function isFormValid(form) {
+  return (
+    Boolean(form.title && form.title.trim().length >= 3) &&
+    Boolean(form.description && form.description.trim().length >= 10) &&
+    Boolean(form.deviation_type)
+  );
 }
