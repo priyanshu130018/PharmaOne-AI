@@ -3,6 +3,7 @@
 // and the AI snapshot is attached for audit if the user applied a suggestion.
 
 const OPTIONAL_TEXT_FIELDS = [
+  "site_plant",
   "reported_by",
   "occurred_on",
   "detected_on",
@@ -26,9 +27,9 @@ const OPTIONAL_ENUM_FIELDS = ["batch_status", "impact", "severity"];
 export function buildCreatePayload(form, aiSnapshot) {
   const payload = {
     source: form.source || "manual",
-    title: form.title.trim(),
-    description: form.description.trim(),
-    deviation_type: form.deviation_type,
+    title: (form.title || "").trim(),
+    description: (form.description || "").trim(),
+    deviation_type: (form.deviation_type || "").toLowerCase().trim(),
     qa_notified: Boolean(form.qa_notified),
   };
 

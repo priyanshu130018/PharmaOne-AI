@@ -1,11 +1,16 @@
 // Thin fetch wrapper around the PharmaOne backend API.
 //
-// The base path is RELATIVE (`/api/v1`) on purpose: the browser calls the same
-// origin it was served from, and the reverse proxy (nginx in production, Vite in
-// dev) forwards `/api` to the backend. This means the backend host/port are never
-// hardcoded into the frontend bundle. An optional build-time override is available
-// via `VITE_API_BASE_URL` for non-standard deployments.
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+// The base path defaults to `/api/v1`. In local development Vite proxies `/api`
+// to the backend, and in production VITE_API_BASE_URL configures the target API host.
+// An optional build-time or runtime override is supported.
+const rawBase = (import.meta.env.VITE_API_BASE_URL || "").trim();
+const API_BASE = rawBase
+  ? rawBase.endsWith("/api/v1")
+    ? rawBase
+    : `${rawBase.replace(/\/+$/, "")}/api/v1`
+  : "/api/v1";
+
+const TOKEN_KEY = "pharmaone_auth_token";
 
 class ApiError extends Error {
   constructor(message, status, detail) {
@@ -35,8 +40,21 @@ function extractMessage(status, body) {
   return `Request failed with status ${status}`;
 }
 
-async function request(path, { method = "GET", body, signal } = {}) {
+function getAuthHeaders() {
   const headers = {};
+  try {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (token) {
+      headers["Authorization"] = `Bearer ${token.trim()}`;
+    }
+  } catch {
+    // ignore storage access issues in restricted environments
+  }
+  return headers;
+}
+
+async function request(path, { method = "GET", body, signal, customHeaders = {} } = {}) {
+  const headers = { ...getAuthHeaders(), ...customHeaders };
   let payload;
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -69,8 +87,10 @@ async function request(path, { method = "GET", body, signal } = {}) {
 }
 
 async function requestMultipart(path, formData, { signal } = {}) {
+  const headers = { ...getAuthHeaders() };
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
+    headers,
     body: formData,
     signal,
   });
@@ -94,6 +114,17 @@ async function requestMultipart(path, formData, { signal } = {}) {
 }
 
 export const api = {
+  // Authentication & Session
+  login: ({ email, password }) =>
+    request("/auth/login", { method: "POST", body: { email, password } }),
+
+  logout: () => request("/auth/logout", { method: "POST" }),
+
+  me: () => request("/auth/me"),
+
+  getDemoUsers: () => request("/auth/demo-users"),
+
+
   // Extract & normalize text from pasted text / email
   extractText: (text, sourceType = "text") =>
     request("/deviations/extract-text", {
@@ -111,6 +142,19 @@ export const api = {
   // AI Deviation Assistant: process raw content -> extraction + risk assessment.
   processDeviation: (content, source = "text") =>
     request("/deviations/process", { method: "POST", body: { content, source } }),
+
+  // AI Deviation Assistant Chat: context-aware chat
+  sendDeviationChat: ({ message, context = {}, assessment = null, currentForm = {}, rawContent = null }) =>
+    request("/deviations/chat", {
+      method: "POST",
+      body: {
+        message,
+        context,
+        assessment,
+        current_form: currentForm,
+        raw_content: rawContent,
+      },
+    }),
 
   // Persist a final, user-reviewed deviation.
   createDeviation: (payload) =>

@@ -41,3 +41,7 @@ class DocumentExtractionError(PharmaOneError):
 
 class StorageOperationError(PharmaOneError):
     """Raised when interaction with Supabase Storage fails."""
+
+
+class EmbeddingGenerationError(PharmaOneError):
+    """Raised when dense embedding generation via Hugging Face fails."""

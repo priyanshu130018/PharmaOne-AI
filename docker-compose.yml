@@ -1,12 +1,3 @@
-# PharmaOne AI - full stack (backend API + frontend SPA/reverse-proxy).
-#
-# Intended for a cloud server. All configuration is supplied via the .env file
-# in this directory (see .env.example). No secrets or environment-specific
-# values are hardcoded here.
-#
-# Bring the stack up:   docker compose up -d --build
-# Apply DB migrations:  docker compose exec backend alembic upgrade head
-
 name: pharmaone-ai
 
 services:
@@ -16,42 +7,41 @@ services:
       dockerfile: Dockerfile
     image: pharmaone-backend:latest
     restart: unless-stopped
-    # All backend settings (DB, Supabase, AI providers, CORS, port, …) are read
-    # from the environment. Missing required values make the app fail fast.
     env_file:
       - .env
     ports:
-      # Optional: expose the API directly (useful for /docs and health checks).
-      # In a locked-down deployment you may drop this and reach it only via the
-      # frontend proxy.
-      - "${BACKEND_PORT}:${BACKEND_PORT}"
+      - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
     healthcheck:
       test:
         - "CMD"
         - "python"
         - "-c"
-        - "import os,urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/api/v1/health' % os.environ['BACKEND_PORT'], timeout=4).status==200 else 1)"
-      interval: 30s
+        - "import os,urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/api/v1/health' % os.environ.get('BACKEND_PORT', '8000'), timeout=4).status==200 else 1)"
+      interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 10s
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        # Empty -> the app uses the relative path /api/v1 (proxied to backend).
-        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-}"
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://localhost:8000/api/v1}"
     image: pharmaone-frontend:latest
     restart: unless-stopped
     environment:
-      # nginx renders its config from these at container start.
-      FRONTEND_PORT: "${FRONTEND_PORT}"
-      BACKEND_HOST: "backend"
-      BACKEND_PORT: "${BACKEND_PORT}"
+      FRONTEND_PORT: "${FRONTEND_PORT:-8080}"
     ports:
-      - "${FRONTEND_PORT}:${FRONTEND_PORT}"
+      - "${FRONTEND_PORT:-8080}:${FRONTEND_PORT:-8080}"
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "wget -qO- http://127.0.0.1:${FRONTEND_PORT:-8080}/ >/dev/null 2>&1 || exit 1"
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

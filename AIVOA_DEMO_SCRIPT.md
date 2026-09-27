@@ -173,7 +173,7 @@ This script provides an exact, step-by-step guide for presenting the PharmaOne A
 
 ### Step 20: Explain Groq LLM
 - **Presenter Script**:
-  > *"We utilize Groq Cloud running LLaMA 3.3 70B Versatile with low-latency LPUs. This delivers sub-second inference with guaranteed adherence to our Pydantic JSON schemas."*
+  > *"We utilize Groq Cloud running openai/gpt-oss-20b with low-latency LPUs. This delivers sub-second inference with guaranteed adherence to our Pydantic JSON schemas."*
 
 ---
 

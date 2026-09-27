@@ -1,14 +1,16 @@
 from uuid import UUID
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile, status
 
-from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile, status
-
+from app.ai.chat import answer_deviation_chat
+from app.ai.graph import process_deviation as run_ai_deviation_pipeline
 from app.api.deps import (
     DeviationServiceDep,
     ExtractionServiceDep,
-    ProcessingServiceDep,
 )
+from app.core.auth import AuthenticatedUser, get_current_user
 from app.core.enums import DeviationSource, DeviationStatus, DeviationType, Severity
 from app.core.exceptions import PharmaOneError, ValidationError
+from app.schemas.chat import DeviationChatRequest, DeviationChatResponse
 from app.schemas.deviation import (
     DeviationCreate,
     DeviationList,
@@ -79,16 +81,27 @@ async def extract_text(
 )
 async def process_deviation(
     payload: ProcessRequest,
-    service: ProcessingServiceDep,
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ProcessResponse:
-    """AI Deviation Assistant. Returns a structured extraction and an AI risk
-    assessment for the reporter to review and edit. Nothing is persisted here —
-    human review is required before saving (`POST /deviations`).
+    """AI Deviation Assistant. Authenticated enterprise endpoint."""
+    return await run_ai_deviation_pipeline(
+        content=payload.content,
+        source=payload.source,
+    )
 
-    NOTE: this foundation returns an offline heuristic stub (`is_stub=true`);
-    the live LangGraph + Groq + RAG pipeline plugs in behind the same contract.
-    """
-    return await service.process(payload)
+
+@router.post(
+    "/chat",
+    response_model=DeviationChatResponse,
+    summary="Context-aware chat for deviation intake",
+)
+async def chat_deviation(
+    payload: DeviationChatRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> DeviationChatResponse:
+    """Answer questions about the deviation grounded in extracted context and current form."""
+    return await answer_deviation_chat(payload)
+
 
 
 @router.post(
@@ -100,23 +113,28 @@ async def process_deviation(
 async def create_deviation(
     payload: DeviationCreate,
     service: DeviationServiceDep,
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DeviationRead:
-    deviation = await service.create(payload)
+    """Create deviation scoped strictly to authenticated company."""
+    deviation = await service.create(payload, user=current_user)
     return DeviationRead.model_validate(deviation)
 
 
 @router.get("", response_model=DeviationList, summary="List deviations")
 async def list_deviations(
     service: DeviationServiceDep,
+    current_user: AuthenticatedUser = Depends(get_current_user),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     status_filter: DeviationStatus | None = Query(default=None, alias="status"),
     severity: Severity | None = Query(default=None),
     deviation_type: DeviationType | None = Query(default=None),
 ) -> DeviationList:
+    """List deviations with company data isolation."""
     items, total = await service.list(
         limit=limit,
         offset=offset,
+        company_id=current_user.company_id,
         status=status_filter,
         severity=severity,
         deviation_type=deviation_type,
@@ -133,8 +151,10 @@ async def list_deviations(
 async def get_deviation(
     deviation_id: UUID,
     service: DeviationServiceDep,
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DeviationRead:
-    deviation = await service.get(deviation_id)
+    """Get deviation ensuring tenant isolation."""
+    deviation = await service.get(deviation_id, company_id=current_user.company_id)
     return DeviationRead.model_validate(deviation)
 
 
@@ -143,8 +163,10 @@ async def update_deviation(
     deviation_id: UUID,
     payload: DeviationUpdate,
     service: DeviationServiceDep,
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DeviationRead:
-    deviation = await service.update(deviation_id, payload)
+    """Update deviation ensuring tenant isolation."""
+    deviation = await service.update(deviation_id, payload, user=current_user)
     return DeviationRead.model_validate(deviation)
 
 
@@ -156,6 +178,8 @@ async def update_deviation(
 async def delete_deviation(
     deviation_id: UUID,
     service: DeviationServiceDep,
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> Response:
-    await service.delete(deviation_id)
+    """Delete deviation ensuring tenant isolation."""
+    await service.delete(deviation_id, company_id=current_user.company_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -102,25 +102,7 @@ export function SectionHeading({ children }) {
   );
 }
 
-export function AiFieldBadge({ isAi, isUserEdited }) {
-  if (isUserEdited) {
-    return (
-      <span
-        title="Manually edited by user"
-        className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
-      >
-        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"
-          />
-        </svg>
-        Modified
-      </span>
-    );
-  }
+export function AiFieldBadge({ isAi }) {
   if (isAi) {
     return (
       <span

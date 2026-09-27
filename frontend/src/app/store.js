@@ -1,4 +1,5 @@
 import { configureStore } from "@reduxjs/toolkit";
+import authReducer from "../features/auth/authSlice.js";
 import deviationReducer from "../features/deviation/deviationSlice.js";
 import deviationsReducer from "../features/deviations/deviationsSlice.js";
 import aiProcessingReducer from "../features/ai/aiProcessingSlice.js";
@@ -8,6 +9,7 @@ import assistantReducer from "../features/assistant/assistantSlice.js";
 
 export const store = configureStore({
   reducer: {
+    auth: authReducer,
     deviation: deviationReducer,
     deviations: deviationsReducer,
     assistant: assistantReducer,

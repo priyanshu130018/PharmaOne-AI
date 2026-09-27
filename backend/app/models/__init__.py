@@ -8,5 +8,16 @@ from app.db.base import Base
 from app.models.audit import AuditEvent
 from app.models.deviation import Deviation
 from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
+from app.models.org import Company, CompanyMembership, Profile, Site
 
-__all__ = ["Base", "Deviation", "AuditEvent", "KnowledgeDocument", "KnowledgeChunk"]
+__all__ = [
+    "Base",
+    "Deviation",
+    "AuditEvent",
+    "KnowledgeDocument",
+    "KnowledgeChunk",
+    "Company",
+    "Site",
+    "Profile",
+    "CompanyMembership",
+]

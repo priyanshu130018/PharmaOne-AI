@@ -131,8 +131,6 @@ describe("LogDeviationForm - AIVOA Intake Workflow", () => {
     fireEvent.change(batchInput, { target: { value: "MANUAL-BATCH-777" } });
 
     expect(batchInput).toHaveValue("MANUAL-BATCH-777");
-    // Should display Modified badge
-    expect(screen.getByText(/Modified/i)).toBeInTheDocument();
 
     // Now AI suggestions arrive with a different batch number
     act(() => {
@@ -275,4 +273,70 @@ describe("LogDeviationForm - AIVOA Intake Workflow", () => {
     expect(screen.getByLabelText(/Title \/ Short Description/i)).toHaveValue("Important Deviation Event");
     expect(screen.getByLabelText(/Detailed Description/i)).toHaveValue("Crucial detailed incident description.");
   });
+
+  it("8. successfully saves, keeps full form visible, and renders Severity Report below on the left", async () => {
+    const mockSavedDeviation = {
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      reference: "DEV-2026-000042",
+      status: "submitted",
+      title: "Granulation impeller speed excursion",
+      description: "Impeller speed exceeded the approved limit for 12 minutes.",
+      deviation_type: "equipment",
+      site_plant: "Demo Manufacturing Site",
+      batch_number: "LOT-2026-051",
+      severity: "critical",
+      impact: "product_quality",
+      ai_recommended_severity: "critical",
+      ai_recommended_impact: "product_quality",
+      ai_reason: "Critical parameter breach directly impacting blend uniformity.",
+      ai_evidence: ["SOP-MFG-042 Section 5.1", "Batch Record Line 14"],
+    };
+
+    api.createDeviation.mockResolvedValueOnce(mockSavedDeviation);
+
+    renderWithStore({
+      deviations: {
+        form: {
+          site_plant: "Demo Manufacturing Site",
+          title: "Granulation impeller speed excursion",
+          description: "Impeller speed exceeded the approved limit for 12 minutes.",
+          deviation_type: "equipment",
+          source: "manual",
+          batch_number: "LOT-2026-051",
+          qa_notified: true,
+          impact: "product_quality",
+          severity: "critical",
+        },
+        aiFields: {},
+        userEditedFields: {},
+        saveStatus: "idle",
+      },
+    });
+
+    const saveBtn = screen.getByRole("button", { name: /Save Deviation/i });
+    expect(saveBtn).not.toBeDisabled();
+
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      expect(api.createDeviation).toHaveBeenCalled();
+    });
+
+    // 1. Full form remains visible!
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Site \/ Plant/i)).toHaveValue("Demo Manufacturing Site");
+      expect(screen.getByLabelText(/Batch \/ Lot Number/i)).toHaveValue("LOT-2026-051");
+      expect(screen.getByLabelText(/Title \/ Short Description/i)).toHaveValue("Granulation impeller speed excursion");
+      expect(screen.getAllByText(/DEV-2026-000042/i).length).toBeGreaterThanOrEqual(1);
+    });
+
+    // 2. Severity Report appears on the LEFT below the form
+    const reportSection = screen.getByTestId("deviation-severity-report");
+    expect(reportSection).toBeInTheDocument();
+    expect(screen.getByText(/DEVIATION SEVERITY REPORT/i)).toBeInTheDocument();
+    expect(screen.getByText(/Critical parameter breach directly impacting blend uniformity/i)).toBeInTheDocument();
+    expect(screen.getByText(/SOP-MFG-042 Section 5.1/i)).toBeInTheDocument();
+    expect(screen.getByText(/Confirmed \(SUBMITTED\)/i)).toBeInTheDocument();
+  });
 });
+

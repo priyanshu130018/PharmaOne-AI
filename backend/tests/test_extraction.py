@@ -25,6 +25,7 @@ from app.api.deps import get_ocr_service
 from app.core.config import get_settings
 from app.main import app
 from app.services.ocr_service import OcrService
+from app.ai.extraction import _heuristic_fallback_extraction
 
 
 def _create_text_pdf(text: str = "Sterility test failure observed in Batch B-2026-042") -> bytes:
@@ -67,6 +68,20 @@ def _create_blank_pdf() -> bytes:
 # ------------------------------------------------------------------------------
 # Text Input Tests
 # ------------------------------------------------------------------------------
+
+
+def test_heuristic_extraction_detects_qa_informed_in_action_text():
+    result = _heuristic_fallback_extraction(
+        "The operator stopped the granulation step and informed the Production Supervisor and QA."
+    )
+
+    assert result["qa_notified"] is True
+
+
+def test_heuristic_extraction_preserves_explicit_qa_not_informed():
+    result = _heuristic_fallback_extraction("QA was not informed during the event.")
+
+    assert result["qa_notified"] is False
 
 
 @pytest.mark.asyncio

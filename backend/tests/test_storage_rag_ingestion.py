@@ -25,10 +25,19 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import DocumentExtractionError, StorageOperationError
+from app.core.exceptions import (
+    DocumentExtractionError,
+    EmbeddingGenerationError,
+    StorageOperationError,
+)
 from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.services.ingestion_service import IngestionService, chunk_text
-from app.services.rag_service import EMBEDDING_DIM, RagService
+from app.rag.embeddings import (
+    EMBEDDING_DIM,
+    HF_EMBEDDING_MODEL,
+    HF_ROUTER_URL,
+)
+from app.rag.service import RagService
 from app.services.storage_service import StorageService
 
 
@@ -78,6 +87,51 @@ def test_embedding_api_failure_fallback() -> None:
         assert len(vec) == EMBEDDING_DIM
         norm = sum(x * x for x in vec) ** 0.5
         assert abs(norm - 1.0) < 1e-4
+
+
+def test_bge_small_model_exclusive_configuration() -> None:
+    """Verifies that BAAI/bge-small-en-v1.5 is the only embedding model configured."""
+    import inspect
+    import app.rag.embeddings as embeddings_module
+    import app.rag.service as rag_module
+
+    assert HF_EMBEDDING_MODEL == "BAAI/bge-small-en-v1.5"
+    assert EMBEDDING_DIM == 384
+    assert HF_ROUTER_URL == "https://router.huggingface.co/hf-inference/models/BAAI/bge-small-en-v1.5"
+    assert not hasattr(rag_module, "HF_INFERENCE_URL")
+    assert not hasattr(embeddings_module, "HF_INFERENCE_URL")
+
+    source_code = inspect.getsource(rag_module) + inspect.getsource(embeddings_module)
+    assert "sentence-transformers" not in source_code
+    assert "MiniLM" not in source_code
+    assert "all-MiniLM-L6-v2" not in source_code
+
+
+def test_hf_embedding_failure_returns_controlled_rag_error() -> None:
+    """Verifies that if the BGE-small Hugging Face request fails in production,
+    a controlled RAG/embedding error is returned and no other model is invoked."""
+    rag = RagService()
+    with patch.object(rag, "_embed_huggingface", side_effect=EmbeddingGenerationError("HF BGE-small endpoint timeout")):
+        results, success, notes = rag.retrieve("Sterility assurance level excursion")
+        assert success is False
+        assert results == []
+        assert notes is not None
+        assert "Reference retrieval failed" in notes
+
+
+def test_no_runtime_reading_of_local_rag_sources() -> None:
+    """Verifies that runtime RAG retrieval operates strictly without reading local data/rag_sources files."""
+    rag = RagService.get_instance()
+    project_root = Path(__file__).resolve().parents[2]
+    local_sources_dir = project_root / "data" / "rag_sources"
+    if local_sources_dir.exists():
+        pdf_files = list(local_sources_dir.glob("*.pdf"))
+        assert len(pdf_files) == 0, f"Found unexpected local RAG PDFs: {pdf_files}"
+
+    results, success, _ = rag.retrieve("cleanroom particulate action limit Grade A", top_k=2)
+    assert success is True
+    assert len(results) > 0
+    assert all("content" in r and "similarity_score" in r for r in results)
 
 
 def test_storage_service_empty_upload_fails() -> None:
@@ -271,7 +325,7 @@ async def test_live_supabase_storage_and_vector_query() -> None:
         file_names = [f.get("name") if isinstance(f, dict) else getattr(f, "name", "") for f in files]
         assert "Form-450-Deviation-Report-Form.pdf" in file_names
         assert "ICH_Q9(R1)_Guideline_Step4_2025_0115_0.pdf" in file_names
-        assert "using-cgmps-documents.pdf" in file_names
+        assert "QUALITY CONTROL SAMPLE SUBMISSION AND TRACKING FORM.pdf" in file_names
 
         # 2. Verify Database pgvector
         async_db_url = db_url.replace("postgresql://", "postgresql+asyncpg://") if "postgresql://" in db_url else db_url

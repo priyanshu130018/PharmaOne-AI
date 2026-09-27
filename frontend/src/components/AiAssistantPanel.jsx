@@ -1,104 +1,69 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  processDeviationInput,
-  setInputMode,
-  setPastedText,
-  setFileInfo,
-  clearFile,
-  clearAssistant,
-  markApplied,
-} from "../features/assistant/assistantSlice.js";
-import { applySuggestions } from "../features/deviations/deviationsSlice.js";
-import { Button, Badge } from "./ui.jsx";
-import AssistantResult from "./AssistantResult.jsx";
-
-const SAMPLE_TEXT = `Sterility test failure observed for morning batch LOT-2026-042 in Sterile Production.
-Possible microbial contamination detected during testing of filled vials in Autoclave AC-02.
-Product: SterileInjectable 100mL
-Equipment: Autoclave AC-02
-Department: Sterile Manufacturing
-Chamber temperature dropped to 118.5°C during the 20-minute sterilization hold phase (approved range: 121.1°C +/- 0.5°C).
-Immediate action: Cycle aborted, entire autoclave load placed on hold under tag Q-882 pending QA review. QA notified.`;
-
-export const AIVOA_STAGES = [
-  { key: "ready", label: "Ready", sub: "Awaiting input" },
-  { key: "processing_document", label: "Processing document", sub: "Extracting text…" },
-  { key: "extracting_deviation", label: "Extracting deviation", sub: "Structuring AIVOA fields" },
-  { key: "retrieving_references", label: "Retrieving references", sub: "SOP vector search" },
-  { key: "assessing_impact", label: "Assessing impact", sub: "CQAs & risk context" },
-  { key: "assessing_severity", label: "Assessing severity", sub: "Quality-risk context" },
-  { key: "ready_for_review", label: "Ready for review", sub: "Fields populated" },
-];
-
-function getStageIndex(currentStage) {
-  const map = {
-    ready: 0,
-    uploading: 1,
-    checking: 1,
-    extracting: 1,
-    processing_document: 1,
-    extracting_deviation: 2,
-    retrieving_references: 3,
-    assessing_impact: 4,
-    assessing_severity: 5,
-    analyzing: 5,
-    ready_for_review: 6,
-    succeeded: 6,
-  };
-  return map[currentStage] ?? 0;
-}
-
-function formatBytes(bytes) {
-  if (!bytes) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
-}
+import { updateMultipleFields } from "../features/deviations/deviationsSlice.js";
+import { processDeviationInput } from "../features/assistant/assistantSlice.js";
+import { api } from "../api/client.js";
 
 export default function AiAssistantPanel() {
   const dispatch = useDispatch();
   const fileInputRef = useRef(null);
-  const [selectedFileObj, setSelectedFileObj] = useState(null);
+  const chatBottomRef = useRef(null);
+
+  const [chatInput, setChatInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  const {
-    input,
-    processing,
-    extractedTextStatus,
-    error,
-    retry,
-    currentProcessingSession,
-    extraction,
-    assessment,
-    meta,
-    applied,
-  } = useSelector((s) => s.assistant);
+  const form = useSelector((s) => s.deviations?.form || {});
+  const lastSaved = useSelector((s) => s.deviations?.lastSaved);
+  const { extraction, assessment, meta, rawContent, extractedTextStatus } = useSelector(
+    (s) => s.assistant || {}
+  );
 
-  const loading = processing.status === "loading";
-  const hasExtractedText = Boolean(extractedTextStatus?.extractedText);
-  const hasResult = processing.status === "succeeded" && (extraction || assessment);
-
-  const handleModeChange = (newMode) => {
-    dispatch(setInputMode(newMode));
-  };
-
-  const handleFileSelect = (file) => {
+  const handleUploadFile = (file) => {
     if (!file) return;
-    setSelectedFileObj(file);
-    dispatch(
-      setFileInfo({
-        name: file.name,
-        size: file.size,
-        type: file.type,
+
+    const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const userMsg = {
+      id: "u-" + Date.now(),
+      sender: "user",
+      text: `Uploaded ${file.name}`,
+      timestamp: timeStr,
+    };
+    setChatMessages((prev) => [...prev, userMsg]);
+    setIsUploading(true);
+
+    dispatch(processDeviationInput({ file, mode: "upload" }))
+      .unwrap()
+      .then(() => {
+        const botMsg = {
+          id: "a-" + Date.now(),
+          sender: "assistant",
+          text: "I extracted the deviation details and populated the form. Please review the values on the left.",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setChatMessages((prev) => [...prev, botMsg]);
       })
-    );
+      .catch((err) => {
+        const errMsg = typeof err === "string" ? err : err?.message || "Could not process document.";
+        const botMsg = {
+          id: "a-" + Date.now(),
+          sender: "assistant",
+          text: `Processing error: ${errMsg}`,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        };
+        setChatMessages((prev) => [...prev, botMsg]);
+      })
+      .finally(() => {
+        setIsUploading(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      });
   };
 
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
-    if (file) handleFileSelect(file);
+    if (file) handleUploadFile(file);
   };
 
   const handleDragOver = (e) => {
@@ -115,457 +80,370 @@ export default function AiAssistantPanel() {
     e.preventDefault();
     setIsDragOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) handleFileSelect(file);
+    if (file) handleUploadFile(file);
   };
 
-  const handleRemoveFile = () => {
-    setSelectedFileObj(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    dispatch(clearFile());
-  };
+  const handleSendChat = async (e) => {
+    e.preventDefault();
+    const query = chatInput.trim();
+    if (!query || isTyping || isUploading) return;
 
-  const handleProcess = () => {
-    if (input.mode === "upload") {
-      if (!selectedFileObj) return;
-      dispatch(
-        processDeviationInput({
-          file: selectedFileObj,
-          mode: "upload",
-          sourceType: "pdf",
-        })
-      );
-    } else {
-      if (!input.pastedText || input.pastedText.trim().length < 5) return;
-      const isEmail = /From:\s*|Subject:\s*|To:\s*/i.test(input.pastedText);
-      dispatch(
-        processDeviationInput({
-          text: input.pastedText,
-          mode: "paste",
-          sourceType: isEmail ? "email" : "text",
-        })
-      );
+    const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const userMsg = {
+      id: "u-" + Date.now(),
+      sender: "user",
+      text: query,
+      timestamp: timeStr,
+    };
+
+    setChatMessages((prev) => [...prev, userMsg]);
+    setChatInput("");
+    setIsTyping(true);
+
+    try {
+      const savedAssessment =
+        lastSaved?.ai_assessment ||
+        (lastSaved?.ai_recommended_severity || lastSaved?.severity
+          ? {
+              recommended_severity: lastSaved.ai_recommended_severity || lastSaved.severity,
+              severity: lastSaved.ai_recommended_severity || lastSaved.severity,
+              recommended_impact: lastSaved.ai_recommended_impact || lastSaved.impact,
+              impact: lastSaved.ai_recommended_impact || lastSaved.impact,
+              reason: lastSaved.ai_reason,
+              evidence: lastSaved.ai_evidence,
+            }
+          : null);
+
+      const savedContext =
+        lastSaved?.ai_extraction ||
+        (lastSaved
+          ? {
+              site_plant: lastSaved.site_plant,
+              title_short_description: lastSaved.title,
+              detailed_description: lastSaved.description,
+              deviation_type: lastSaved.deviation_type,
+              batch_lot_number: lastSaved.batch_number,
+              related_product_material: lastSaved.product_name,
+            }
+          : {});
+
+      const res = await api.sendDeviationChat({
+        message: query,
+        context: extraction || meta?.deviation || savedContext,
+        assessment: assessment || meta?.assessment || savedAssessment,
+        currentForm: form || {},
+        rawContent: rawContent || extractedTextStatus?.extractedText || "",
+      });
+
+      const rawChanges = res?.changes;
+      let normalizedChanges = null;
+
+      if (res?.intent === "update_form" && rawChanges) {
+        if (Array.isArray(rawChanges) && rawChanges.length > 0) {
+          normalizedChanges = rawChanges;
+        } else if (typeof rawChanges === "object" && Object.keys(rawChanges).length > 0) {
+          const fieldLabels = {
+            site: "Site / Plant",
+            site_plant: "Site / Plant",
+            occurred_on: "Date of Occurrence",
+            date_of_occurrence: "Date of Occurrence",
+            detected_on: "Date Detected",
+            title: "Title / Short Description",
+            source: "Source Channel",
+            product_name: "Related Product / Material",
+            product: "Related Product / Material",
+            product_code: "Product Code",
+            batch_number: "Batch / Lot Number",
+            description: "Detailed Description",
+            deviation_type: "Deviation Type",
+            impact: "Initial Impact",
+            severity: "Initial Severity",
+            parameter: "Parameter",
+            expected_condition: "Approved Range",
+            actual_condition: "Actual Value",
+            duration: "Duration",
+            manufacturing_stage: "Manufacturing Stage",
+            equipment: "Equipment",
+            department: "Department",
+            responsible_team: "Responsible Team",
+            immediate_action: "Immediate Action",
+            qa_notified: "QA Notified",
+            batch_status: "Batch Status",
+          };
+          normalizedChanges = Object.entries(rawChanges).map(([k, v]) => ({
+            field: k,
+            label: fieldLabels[k] || k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+            old_value: form[k] || "",
+            new_value: v,
+          }));
+        }
+      }
+
+      // Live Form Update: If AI returned structured changes, update Redux immediately
+      if (normalizedChanges && normalizedChanges.length > 0) {
+        dispatch(updateMultipleFields({ changes: normalizedChanges }));
+      }
+
+      const botReply =
+        res?.message ||
+        res?.response ||
+        "The provided deviation information does not contain enough information to answer that.";
+
+      const botMsg = {
+        id: "a-" + Date.now(),
+        sender: "assistant",
+        text: botReply,
+        changes: normalizedChanges,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setChatMessages((prev) => [...prev, botMsg]);
+    } catch (err) {
+      const botMsg = {
+        id: "a-" + Date.now(),
+        sender: "assistant",
+        text:
+          err?.message ||
+          "The provided deviation information does not contain enough information to answer that.",
+        changes: null,
+        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setChatMessages((prev) => [...prev, botMsg]);
+    } finally {
+      setIsTyping(false);
     }
   };
 
-  const handleRetry = () => {
-    if (retry.lastPayload) {
-      dispatch(
-        processDeviationInput({
-          file: selectedFileObj || retry.lastPayload.file,
-          text: retry.lastPayload.text || input.pastedText,
-          sourceType: retry.lastPayload.sourceType || input.sourceType,
-          mode: retry.lastPayload.mode || input.mode,
-        })
-      );
-    } else {
-      handleProcess();
+  useEffect(() => {
+    if (chatBottomRef.current && typeof chatBottomRef.current.scrollIntoView === "function") {
+      chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  };
-
-  const handleClear = () => {
-    setSelectedFileObj(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-    dispatch(clearAssistant());
-  };
-
-  const handleApplyManually = () => {
-    dispatch(
-      applySuggestions({
-        deviation: meta?.deviation,
-        extraction,
-        assessment,
-        source: extractedTextStatus?.sourceType || input.sourceType || "text",
-      })
-    );
-    dispatch(markApplied());
-  };
-
-  const canSubmit =
-    !loading &&
-    ((input.mode === "upload" && Boolean(selectedFileObj)) ||
-      (input.mode === "paste" && input.pastedText.trim().length >= 5));
-
-  const currentStageIdx = getStageIndex(processing.stage);
+  }, [chatMessages, isTyping, isUploading]);
 
   return (
     <section
       aria-label="AI Deviation Assistant Panel"
-      className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`flex h-full flex-col rounded-xl border bg-white shadow-sm overflow-hidden transition ${
+        isDragOver ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-200"
+      }`}
     >
-      {/* Header */}
-      <header className="border-b border-slate-200 px-5 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-semibold text-slate-800">
-                AI Deviation Assistant
-              </h2>
-              <span className="rounded-full bg-brand-50 border border-brand-200/80 px-2 py-0.5 text-[10px] font-semibold text-brand-700">
-                AIVOA Workflow
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Primary intake channel: upload deviation PDF or paste text to auto-populate form.
-            </p>
-          </div>
-          {currentProcessingSession?.sessionId && (
-            <span className="text-[10px] text-slate-400 font-mono">
-              {currentProcessingSession.sessionId.slice(-10)}
-            </span>
-          )}
+      {/* Panel Header: Only AI Deviation Assistant */}
+      <header className="shrink-0 flex items-center justify-between border-b border-slate-200 px-5 py-3.5 bg-white">
+        <div className="flex items-center gap-2">
+          <h2 className="text-base font-semibold text-slate-900">
+            AI Deviation Assistant
+          </h2>
+          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 uppercase tracking-wider">
+            BETA
+          </span>
         </div>
-
-        {/* Mode Selector Tabs */}
-        <div className="mt-3 flex rounded-lg bg-slate-100 p-1 text-xs font-medium">
-          <button
-            type="button"
-            className={`flex-1 rounded-md py-1.5 transition ${
-              input.mode === "upload"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-            onClick={() => handleModeChange("upload")}
-            disabled={loading}
-          >
-            📄 Upload PDF / Document
-          </button>
-          <button
-            type="button"
-            className={`flex-1 rounded-md py-1.5 transition ${
-              input.mode === "paste"
-                ? "bg-white text-slate-900 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-            onClick={() => handleModeChange("paste")}
-            disabled={loading}
-          >
-            📝 Paste Text / Email
-          </button>
-        </div>
+        {(extraction || lastSaved) && (
+          <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            Deviation context active
+          </span>
+        )}
       </header>
 
-      {/* Main Body */}
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
-        
-        {/* Mode 1: Document Upload */}
-        {input.mode === "upload" && (
-          <div className="space-y-3">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept=".pdf,.txt,.log,.eml"
-              className="hidden"
-              id="pdf-upload-input"
-            />
-
-            {!selectedFileObj ? (
+      {/* Independently Scrollable Chat Conversation Area */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-3">
+        {chatMessages.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center text-center text-slate-400 p-6">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600 mb-3 shadow-xs">
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                />
+              </svg>
+            </div>
+            <p className="text-xs font-semibold text-slate-700 max-w-xs leading-relaxed">
+              Describe your deviation or ask me to update any field in the form.
+            </p>
+            <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+              Click 📎 to upload a deviation document or type an instruction below.
+            </p>
+          </div>
+        ) : (
+          chatMessages.map((msg) => (
+            <div
+              key={msg.id}
+              className={`flex gap-2.5 ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
+            >
+              {msg.sender === "assistant" && (
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white font-bold text-[10px] shadow-xs">
+                  AI
+                </div>
+              )}
               <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 text-center transition ${
-                  isDragOver
-                    ? "border-brand-500 bg-brand-50/50"
-                    : "border-slate-300 hover:border-brand-400 hover:bg-slate-50"
+                className={`rounded-xl px-3.5 py-2.5 max-w-[85%] text-xs leading-relaxed shadow-xs ${
+                  msg.sender === "user"
+                    ? "bg-blue-600 text-white font-normal"
+                    : "bg-white border border-slate-200 text-slate-800"
                 }`}
               >
-                <div className="mb-2 rounded-full bg-slate-100 p-3 text-slate-600">
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                    />
-                  </svg>
-                </div>
-                <p className="text-xs font-semibold text-slate-700">
-                  Drop deviation PDF, scanned report, or document here
-                </p>
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Supports PDF (digital or scanned with OCR), TXT, EML up to 10MB
-                </p>
-                <span className="mt-3 inline-block rounded bg-brand-50 px-2.5 py-1 text-xs font-medium text-brand-700">
-                  Browse Files
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="flex items-center gap-3 truncate">
-                  <div className="rounded bg-brand-100 p-2 text-brand-700">
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                      />
-                    </svg>
-                  </div>
-                  <div className="truncate">
-                    <p className="truncate text-xs font-medium text-slate-800">
-                      {selectedFileObj.name}
-                    </p>
-                    <p className="text-[10px] text-slate-400">
-                      {formatBytes(selectedFileObj.size)}
-                    </p>
-                  </div>
-                </div>
-                {!loading && (
-                  <button
-                    type="button"
-                    onClick={handleRemoveFile}
-                    className="rounded p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
-                    title="Remove file"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Mode 2: Paste Text / Email */}
-        {input.mode === "paste" && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label
-                htmlFor="pasted-content"
-                className="text-xs font-semibold uppercase tracking-wide text-slate-500"
-              >
-                Deviation Content (Report, Email, Shift Log)
-              </label>
-              <button
-                type="button"
-                className="text-xs font-medium text-brand-600 hover:text-brand-700"
-                onClick={() => dispatch(setPastedText(SAMPLE_TEXT))}
-                disabled={loading}
-              >
-                Load example
-              </button>
-            </div>
-            <textarea
-              id="pasted-content"
-              rows={7}
-              value={input.pastedText}
-              onChange={(e) => dispatch(setPastedText(e.target.value))}
-              placeholder="Paste deviation description, shift log, or notification email body here… (min 5 characters)"
-              className="field-input resize-y font-mono text-xs leading-relaxed"
-              disabled={loading}
-            />
-            <div className="flex justify-end text-xs text-slate-400">
-              {input.pastedText.length} characters
-            </div>
-          </div>
-        )}
-
-        {/* Action Buttons */}
-        <div className="flex items-center gap-3 pt-1">
-          <Button
-            type="button"
-            onClick={handleProcess}
-            disabled={!canSubmit}
-            className="flex-1 sm:flex-initial"
-          >
-            {loading ? "Processing…" : input.mode === "upload" ? "Analyze Document" : "Analyze Text"}
-          </Button>
-
-          {(hasResult || hasExtractedText || error || selectedFileObj || input.pastedText) && (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={handleClear}
-              disabled={loading}
-            >
-              Clear
-            </Button>
-          )}
-        </div>
-
-        {/* Real Processing Stage Progression Stepper (No fake percentages) */}
-        {loading && (
-          <div className="rounded-lg border border-brand-200 bg-brand-50/50 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <svg
-                className="h-4 w-4 animate-spin text-brand-600 shrink-0"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                />
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8v8H4z"
-                />
-              </svg>
-              <span className="text-xs font-semibold text-brand-900">
-                {processing.stageMessage || "Processing document: Extracting text…"}
-              </span>
-            </div>
-
-            {/* Stage Progression Cards */}
-            <div className="grid grid-cols-2 gap-1.5 text-xs sm:grid-cols-3 md:grid-cols-4">
-              {AIVOA_STAGES.filter((s) => s.key !== "ready").map((stg, idx) => {
-                const stageIdxInList = idx + 1;
-                const isActive = stageIdxInList === currentStageIdx;
-                const isPassed = currentStageIdx > stageIdxInList;
-
-                return (
-                  <div
-                    key={stg.key}
-                    className={`rounded border p-2 transition text-left ${
-                      isActive
-                        ? "border-brand-500 bg-white text-brand-700 font-semibold shadow-xs"
-                        : isPassed
-                        ? "border-emerald-300 bg-emerald-50 text-emerald-800"
-                        : "border-slate-200 bg-slate-50 text-slate-400"
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5">
-                      {isPassed ? (
-                        <span className="font-bold text-emerald-600">✓</span>
-                      ) : isActive ? (
-                        <span className="h-1.5 w-1.5 rounded-full bg-brand-600 animate-pulse shrink-0" />
-                      ) : (
-                        <span className="h-1.5 w-1.5 rounded-full bg-slate-300 shrink-0" />
-                      )}
-                      <span className="truncate text-[11px]">{stg.label}</span>
+                {msg.sender === "assistant" && msg.changes && msg.changes.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5 font-bold text-emerald-700 text-xs">
+                      <span className="text-emerald-600 font-extrabold text-sm leading-none">✓</span>
+                      <span>
+                        {msg.changes.length === 1
+                          ? "Change applied"
+                          : `${msg.changes.length} changes applied`}
+                      </span>
                     </div>
-                    <p className="text-[10px] mt-0.5 truncate text-slate-500 font-normal">
-                      {stg.sub}
-                    </p>
+                    <div className="space-y-2.5 pl-1.5 border-l-2 border-emerald-500/30 ml-0.5">
+                      {msg.changes.map((ch, idx) => (
+                        <div key={idx} className="text-xs">
+                          <div className="font-semibold text-slate-800 flex items-center gap-1.5">
+                            <span className="text-slate-400">•</span>
+                            <span>{ch.label || ch.field}</span>
+                          </div>
+                          <div className="pl-3 mt-0.5 text-slate-700 font-medium text-[11px] break-words">
+                            {ch.old_value &&
+                            String(ch.old_value).trim() &&
+                            String(ch.old_value).trim() !== String(ch.new_value).trim() ? (
+                              <span>
+                                <span className="text-slate-400 line-through mr-1.5">
+                                  {String(ch.old_value)}
+                                </span>
+                                <span className="text-slate-400 mr-1.5">→</span>
+                                <span className="font-semibold text-slate-900">
+                                  {String(ch.new_value)}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="font-semibold text-slate-900">
+                                {String(ch.new_value)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {msg.text &&
+                      !msg.text.match(/^\d+\s+changes?\s+applied\.?$/i) &&
+                      !msg.text.match(/^change\s+applied\.?$/i) && (
+                        <div className="text-slate-600 text-[11px] pt-1 border-t border-slate-100">
+                          {msg.text}
+                        </div>
+                      )}
                   </div>
-                );
-              })}
+                ) : (
+                  <div>{msg.text}</div>
+                )}
+              </div>
             </div>
-          </div>
+          ))
         )}
 
-        {/* Error State with Structured Message & One-Click Retry */}
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 space-y-2">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2 text-red-800 font-semibold text-sm">
-                <svg
-                  className="h-4 w-4 shrink-0 text-red-600"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>{typeof error === "object" && error.title ? error.title : "Processing Error"}</span>
-              </div>
-              {retry.canRetry && (
-                <button
-                  type="button"
-                  onClick={handleRetry}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-red-700 hover:text-red-900 underline"
-                >
-                  <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                      fillRule="evenodd"
-                      d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  Retry ({retry.retryCount})
-                </button>
-              )}
+        {/* Upload Processing Indicator */}
+        {isUploading && (
+          <div className="flex gap-2.5 justify-start">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white font-bold text-[10px]">
+              AI
             </div>
-
-            <p className="text-xs text-red-700">
-              {typeof error === "object" ? error.message : error}
-            </p>
-
-            {(typeof error === "object" ? error.message : error).toLowerCase().includes("ocr") && (
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => dispatch(setInputMode("paste"))}
-                  className="text-xs font-medium text-red-800 underline hover:text-red-900"
-                >
-                  Switch to paste text directly →
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Extracted Content & Auto-Population Success Banner */}
-        {hasExtractedText && (
-          <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Extracted Document Content
-              </span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {extractedTextStatus.sourceType && (
-                  <Badge className="border-slate-300 bg-white text-slate-700">
-                    Source: {extractedTextStatus.sourceType.toUpperCase()}
-                  </Badge>
-                )}
-                {extractedTextStatus.metadata?.page_count > 0 && (
-                  <Badge className="border-slate-300 bg-white text-slate-700">
-                    Pages: {extractedTextStatus.metadata.page_count}
-                  </Badge>
-                )}
-                {extractedTextStatus.metadata?.character_count > 0 && (
-                  <Badge className="border-slate-300 bg-white text-slate-700">
-                    Chars: {extractedTextStatus.metadata.character_count}
-                  </Badge>
-                )}
-                {extractedTextStatus.metadata?.ocr_applied && (
-                  <Badge className="border-amber-200 bg-amber-50 text-amber-700">
-                    OCR Fallback Applied
-                  </Badge>
-                )}
-              </div>
-            </div>
-
-            <div className="max-h-36 overflow-y-auto rounded border border-slate-200 bg-white p-2.5 text-xs text-slate-700 font-mono whitespace-pre-wrap leading-relaxed">
-              {extractedTextStatus.extractedText}
-            </div>
-
-            {/* Indication of automated population into the left form */}
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium pt-1">
-              <svg className="h-4 w-4 shrink-0 text-emerald-600" viewBox="0 0 20 20" fill="currentColor">
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                  clipRule="evenodd"
-                />
+            <div className="rounded-xl px-3.5 py-2 bg-blue-50 border border-blue-200 text-blue-800 text-xs flex items-center gap-2">
+              <svg className="h-3.5 w-3.5 animate-spin text-blue-600 shrink-0" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              <span>Extracted fields automatically populated into deviation form on the left.</span>
+              <span>Extracting deviation details and populating form…</span>
             </div>
           </div>
         )}
 
-        {/* Structured AI Analysis Results */}
-        {hasResult && (
-          <AssistantResult
-            extraction={extraction}
-            assessment={assessment}
-            meta={meta}
-            applied={applied}
-            onApply={handleApplyManually}
-          />
+        {/* Assistant Typing / Thinking Indicator */}
+        {isTyping && (
+          <div className="flex gap-2.5 justify-start">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white font-bold text-[10px]">
+              AI
+            </div>
+            <div className="rounded-xl px-3.5 py-2 bg-white border border-slate-200 text-slate-500 text-xs flex items-center gap-1.5 shadow-2xs">
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-bounce" />
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.2s]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:0.4s]" />
+              <span className="text-[11px] text-slate-400 ml-1">Thinking…</span>
+            </div>
+          </div>
         )}
+
+        <div ref={chatBottomRef} />
+      </div>
+
+      {/* Fixed Bottom Chat Composer with integrated Attachment Icon */}
+      <div className="shrink-0 border-t border-slate-200 px-4 py-3 bg-white rounded-b-xl">
+        <form onSubmit={handleSendChat} className="flex items-center gap-2">
+          {/* Hidden File Input for document upload */}
+          <input
+            ref={fileInputRef}
+            id="pdf-upload-input"
+            data-testid="document-upload-input"
+            type="file"
+            accept=".pdf,.txt,application/pdf,text/plain"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+
+          {/* Attachment Icon Button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading || isTyping}
+            title="Attach deviation document (PDF, TXT)"
+            aria-label="Attach document"
+            className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            <svg
+              className="h-4 w-4"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+              />
+            </svg>
+          </button>
+
+          {/* Chat Message Input */}
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            disabled={isUploading || isTyping}
+            placeholder="Ask me anything about this deviation..."
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400"
+          />
+
+          {/* Send Message Button */}
+          <button
+            type="submit"
+            disabled={!chatInput.trim() || isUploading || isTyping}
+            aria-label="Send message"
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0"
+          >
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          </button>
+        </form>
       </div>
     </section>
   );

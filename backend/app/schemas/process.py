@@ -7,7 +7,10 @@ inferences, and missing information.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+import re
+from typing import Any
+
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.enums import (
     BatchStatus,
@@ -16,6 +19,13 @@ from app.core.enums import (
     Impact,
     Severity,
 )
+
+_MONTH_MAP: dict[str, str] = {
+    "january": "01", "jan": "01", "february": "02", "feb": "02", "march": "03", "mar": "03",
+    "april": "04", "apr": "04", "may": "05", "june": "06", "jun": "06",
+    "july": "07", "jul": "07", "august": "08", "aug": "08", "september": "09", "sep": "09", "sept": "09",
+    "october": "10", "oct": "10", "november": "11", "nov": "11", "december": "12", "dec": "12",
+}
 
 
 class ProcessRequest(BaseModel):
@@ -32,6 +42,10 @@ class StructuredDeviation(BaseModel):
     and explicitly identified missing data. Does not invent or fabricate values.
     """
 
+    company: str | None = Field(
+        default=None,
+        description="Company or corporate organization name",
+    )
     site_plant: str | None = Field(
         default=None,
         description="Manufacturing site or facility name",
@@ -115,6 +129,39 @@ class StructuredDeviation(BaseModel):
         description="Explicitly identified fields not present in the input text.",
     )
 
+    @field_validator("date_of_occurrence", mode="before")
+    @classmethod
+    def normalize_date_of_occurrence(cls, v: Any) -> str | None:
+        if not v:
+            return None
+        s = str(v).strip()
+        m = re.search(r"\b(\d{4})-(\d{2})-(\d{2})\b", s)
+        if m:
+            return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        m = re.search(r"\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\b", s)
+        if m:
+            return f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}"
+        m = re.search(r"\b(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})\b", s)
+        if m and m.group(2).lower() in _MONTH_MAP:
+            return f"{m.group(3)}-{_MONTH_MAP[m.group(2).lower()]}-{m.group(1).zfill(2)}"
+        m = re.search(r"\b([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})\b", s)
+        if m and m.group(1).lower() in _MONTH_MAP:
+            return f"{m.group(3)}-{_MONTH_MAP[m.group(1).lower()]}-{m.group(2).zfill(2)}"
+        return s
+
+    @field_validator("deviation_type", mode="before")
+    @classmethod
+    def coerce_deviation_type(cls, v: Any) -> Any:
+        if not v:
+            return None
+        if isinstance(v, DeviationType):
+            return v
+        s = str(v).strip().lower()
+        for dt in DeviationType:
+            if dt.value == s:
+                return dt
+        return DeviationType.OTHER
+
 
 class AssessmentResult(BaseModel):
     """Initial quality-risk assessment recommendation for human review."""
@@ -155,6 +202,10 @@ class RetrievedSource(BaseModel):
 class ExtractionResult(BaseModel):
     """Backward-compatible mapping of structured fields for the editable form."""
 
+    company: str | None = None
+    site_plant: str | None = None
+    occurred_on: str | None = None
+    date_of_occurrence: str | None = None
     title: str | None = None
     description: str | None = None
     deviation_type: DeviationType | None = None

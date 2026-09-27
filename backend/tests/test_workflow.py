@@ -17,8 +17,7 @@ from app.schemas.process import (
     RetrievedSource,
     StructuredDeviation,
 )
-from app.services.rag_service import RagService
-from app.workflows.deviation_intake import (
+from app.ai import (
     DeviationWorkflowState,
     _heuristic_fallback_extraction,
     assess_impact_node,
@@ -32,6 +31,7 @@ from app.workflows.deviation_intake import (
     validate_input_node,
     validate_structured_output_node,
 )
+from app.rag.service import RagService
 
 
 # ==============================================================================
@@ -77,7 +77,7 @@ async def test_valid_structured_extraction():
     mock_response = MagicMock(choices=[mock_choice])
     mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
-    with patch("app.workflows.deviation_intake._get_groq_client", return_value=(mock_client, "llama-3.3-70b-versatile")):
+    with patch("app.ai.extraction._get_groq_client", return_value=(mock_client, "openai/gpt-oss-20b")):
         state: DeviationWorkflowState = {
             "raw_content": "Autoclave AC-02 dropped to 119.5C for 6 minutes on batch LOT-2026-991.",
             "source": "text",
@@ -150,7 +150,7 @@ async def test_missing_fields_handling():
     mock_choice.message.content = json.dumps(mock_sparse_json)
     mock_client.chat.completions.create = AsyncMock(return_value=MagicMock(choices=[mock_choice]))
 
-    with patch("app.workflows.deviation_intake._get_groq_client", return_value=(mock_client, "llama-3.3-70b-versatile")):
+    with patch("app.ai.extraction._get_groq_client", return_value=(mock_client, "openai/gpt-oss-20b")):
         state: DeviationWorkflowState = {
             "raw_content": "The mixing pump made an unusual sound during buffer staging.",
             "source": "text",
@@ -187,7 +187,7 @@ async def test_invalid_llm_output_malformed_json():
     mock_choice.message.content = "Here is the result: { invalid_json : true, missing quotes "
     mock_client.chat.completions.create = AsyncMock(return_value=MagicMock(choices=[mock_choice]))
 
-    with patch("app.workflows.deviation_intake._get_groq_client", return_value=(mock_client, "llama-3.3-70b-versatile")):
+    with patch("app.ai.extraction._get_groq_client", return_value=(mock_client, "openai/gpt-oss-20b")):
         state: DeviationWorkflowState = {
             "raw_content": "Batch B-999 had a temperature excursion in the cold room.",
             "source": "text",
@@ -219,7 +219,7 @@ async def test_llm_timeout_and_failure():
     mock_client = MagicMock()
     mock_client.chat.completions.create = AsyncMock(side_effect=TimeoutError("Groq gateway connection timed out"))
 
-    with patch("app.workflows.deviation_intake._get_groq_client", return_value=(mock_client, "llama-3.3-70b-versatile")):
+    with patch("app.ai.extraction._get_groq_client", return_value=(mock_client, "openai/gpt-oss-20b")):
         state: DeviationWorkflowState = {
             "raw_content": "Sterility test failure observed in batch B-440.",
             "source": "text",
@@ -492,7 +492,7 @@ async def test_groq_unavailable_and_connection_refused_fallback():
         side_effect=ConnectionRefusedError("Connection to Groq API endpoint refused (503 Service Unavailable)")
     )
 
-    with patch("app.workflows.deviation_intake._get_groq_client", return_value=(mock_client, "llama-3.3-70b-versatile")):
+    with patch("app.ai.extraction._get_groq_client", return_value=(mock_client, "openai/gpt-oss-20b")):
         state: DeviationWorkflowState = {
             "raw_content": "Batch LOT-909 experienced pressure spike of 4.2 bar in filtration unit.",
             "source": "text",

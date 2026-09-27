@@ -64,7 +64,7 @@ def test_no_tesseract_or_poppler_in_settings_or_modules():
         SUPABASE_URL="https://test.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY="test-key",
         GROQ_API_KEY="test-groq",
-        GROQ_MODEL="llama-3.3-70b-versatile",
+        GROQ_MODEL="openai/gpt-oss-20b",
         HUGGINGFACE_API_KEY="test-hf",
     )
 
@@ -111,7 +111,7 @@ def test_production_environment_configuration_enforcement():
         SUPABASE_URL="https://test.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY="test-key",
         GROQ_API_KEY="test-groq",
-        GROQ_MODEL="llama-3.3-70b-versatile",
+        GROQ_MODEL="openai/gpt-oss-20b",
         HUGGINGFACE_API_KEY="test-hf",
     )
     assert prod_settings.ENVIRONMENT == "production"
@@ -128,7 +128,7 @@ def test_production_environment_configuration_enforcement():
             SUPABASE_URL="https://test.supabase.co",
             SUPABASE_SERVICE_ROLE_KEY="test-key",
             GROQ_API_KEY="test-groq",
-            GROQ_MODEL="llama-3.3-70b-versatile",
+            GROQ_MODEL="openai/gpt-oss-20b",
             HUGGINGFACE_API_KEY="test-hf",
         )
 
@@ -143,7 +143,7 @@ def test_production_environment_configuration_enforcement():
             SUPABASE_URL="https://test.supabase.co",
             SUPABASE_SERVICE_ROLE_KEY="test-key",
             GROQ_API_KEY="test-groq",
-            GROQ_MODEL="llama-3.3-70b-versatile",
+            GROQ_MODEL="openai/gpt-oss-20b",
             HUGGINGFACE_API_KEY="test-hf",
         )
 

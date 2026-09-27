@@ -89,7 +89,7 @@ def test_cors_settings_parsing() -> None:
         SUPABASE_URL="https://test.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY="test-key",
         GROQ_API_KEY="test-key",
-        GROQ_MODEL="llama-3.3-70b-versatile",
+        GROQ_MODEL="openai/gpt-oss-20b",
         HUGGINGFACE_API_KEY="test-key",
     )
     assert settings.cors_origins == [
@@ -111,7 +111,7 @@ def test_cors_settings_rejects_empty() -> None:
             SUPABASE_URL="https://test.supabase.co",
             SUPABASE_SERVICE_ROLE_KEY="test-key",
             GROQ_API_KEY="test-key",
-            GROQ_MODEL="llama-3.3-70b-versatile",
+            GROQ_MODEL="openai/gpt-oss-20b",
             HUGGINGFACE_API_KEY="test-key",
         )
 
@@ -128,7 +128,7 @@ def test_cors_production_rejects_wildcard() -> None:
             SUPABASE_URL="https://test.supabase.co",
             SUPABASE_SERVICE_ROLE_KEY="test-key",
             GROQ_API_KEY="test-key",
-            GROQ_MODEL="llama-3.3-70b-versatile",
+            GROQ_MODEL="openai/gpt-oss-20b",
             HUGGINGFACE_API_KEY="test-key",
         )
 
@@ -144,7 +144,7 @@ def test_cors_production_accepts_explicit_domains() -> None:
         SUPABASE_URL="https://test.supabase.co",
         SUPABASE_SERVICE_ROLE_KEY="test-key",
         GROQ_API_KEY="test-key",
-        GROQ_MODEL="llama-3.3-70b-versatile",
+        GROQ_MODEL="openai/gpt-oss-20b",
         HUGGINGFACE_API_KEY="test-key",
     )
     assert settings.cors_origins == [

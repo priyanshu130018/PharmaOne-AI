@@ -69,12 +69,14 @@ class DeviationSource(str, Enum):
 
 
 class AuditAction(str, Enum):
-    """Auditable actions (subset relevant to the deviation module foundation).
+    """Auditable actions (GMP / 21 CFR Part 11)."""
 
-    Auth/admin actions (LOGIN, USER_CREATED, ...) are defined in the spec and
-    will be recorded once the auth module lands.
-    """
-
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
+    ACCESS_DENIED = "ACCESS_DENIED"
+    USER_CREATED = "USER_CREATED"
+    USER_ACTIVATED = "USER_ACTIVATED"
+    USER_DEACTIVATED = "USER_DEACTIVATED"
     DEVIATION_CREATED = "DEVIATION_CREATED"
     DEVIATION_UPDATED = "DEVIATION_UPDATED"
     DEVIATION_PROCESSED = "DEVIATION_PROCESSED"

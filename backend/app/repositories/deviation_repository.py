@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import UUID
 
 from sqlalchemy import func, select
 
@@ -17,6 +18,7 @@ class DeviationRepository(BaseRepository[Deviation]):
         *,
         limit: int,
         offset: int,
+        company_id: UUID | None = None,
         status: DeviationStatus | None = None,
         severity: Severity | None = None,
         deviation_type: DeviationType | None = None,
@@ -25,6 +27,8 @@ class DeviationRepository(BaseRepository[Deviation]):
         count_stmt = select(func.count()).select_from(Deviation)
 
         conditions = []
+        if company_id is not None:
+            conditions.append(Deviation.company_id == company_id)
         if status is not None:
             conditions.append(Deviation.status == status)
         if severity is not None:
@@ -43,11 +47,7 @@ class DeviationRepository(BaseRepository[Deviation]):
         return items, total
 
     async def next_reference(self) -> str:
-        """Generate a sequential, year-scoped reference like DEV-2026-000042.
-
-        Adequate for the intake foundation; a DB sequence can replace it later
-        without changing the service contract.
-        """
+        """Generate a sequential, year-scoped reference like DEV-2026-000042."""
         year = datetime.now(timezone.utc).year
         stmt = select(func.count()).select_from(Deviation).where(
             Deviation.reference.like(f"DEV-{year}-%")
@@ -55,8 +55,11 @@ class DeviationRepository(BaseRepository[Deviation]):
         used = int((await self.session.execute(stmt)).scalar_one())
         return f"DEV-{year}-{used + 1:06d}"
 
-    async def _count_by(self, column) -> list[tuple[str, int]]:
-        stmt = select(column, func.count()).group_by(column)
+    async def _count_by(self, column, company_id: UUID | None = None) -> list[tuple[str, int]]:
+        stmt = select(column, func.count())
+        if company_id is not None:
+            stmt = stmt.where(Deviation.company_id == company_id)
+        stmt = stmt.group_by(column)
         rows = (await self.session.execute(stmt)).all()
         result: list[tuple[str, int]] = []
         for key, count in rows:
@@ -69,11 +72,15 @@ class DeviationRepository(BaseRepository[Deviation]):
             result.append((label, int(count)))
         return result
 
-    async def summary(self) -> dict:
-        total = await self.count()
+    async def summary(self, company_id: UUID | None = None) -> dict:
+        count_stmt = select(func.count()).select_from(Deviation)
+        if company_id is not None:
+            count_stmt = count_stmt.where(Deviation.company_id == company_id)
+        total = int((await self.session.execute(count_stmt)).scalar_one())
+
         return {
             "total": total,
-            "by_status": await self._count_by(Deviation.status),
-            "by_severity": await self._count_by(Deviation.severity),
-            "by_type": await self._count_by(Deviation.deviation_type),
+            "by_status": await self._count_by(Deviation.status, company_id),
+            "by_severity": await self._count_by(Deviation.severity, company_id),
+            "by_type": await self._count_by(Deviation.deviation_type, company_id),
         }

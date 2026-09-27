@@ -28,6 +28,8 @@ class DeviationBase(BaseModel):
     detected_on: date | None = None
 
     # Organization
+    company: str | None = Field(default=None, max_length=160, description="Company name")
+    company_name: str | None = Field(default=None, max_length=160, description="Company name")
     company_id: uuid.UUID | None = None
     site_id: uuid.UUID | None = None
     department: str | None = Field(default=None, max_length=120)
@@ -123,11 +125,22 @@ class DeviationBase(BaseModel):
             if sev:
                 data.setdefault("severity", sev)
                 data.setdefault("initial_severity", sev)
-            # Site plant / Department
-            sp = data.get("site_plant") or data.get("department")
-            if sp:
-                data.setdefault("site_plant", sp)
-                data.setdefault("department", sp)
+            # Company
+            comp = data.get("company") or data.get("company_name")
+            if comp:
+                data.setdefault("company", comp)
+                data.setdefault("company_name", comp)
+
+            # Deviation type normalization
+            dev_type = data.get("deviation_type")
+            if isinstance(dev_type, str) and dev_type.strip():
+                data["deviation_type"] = dev_type.strip().lower()
+
+            # Date normalization and empty-string cleanup
+            for dt_k in ("occurred_on", "date_of_occurrence", "detected_on"):
+                val = data.get(dt_k)
+                if val == "":
+                    data[dt_k] = None
         return data
 
     @model_validator(mode="after")

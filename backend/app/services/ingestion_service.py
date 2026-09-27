@@ -6,7 +6,7 @@ Implements the end-to-end knowledge ingestion pipeline:
 3. If checksum matches and document is already indexed, skip duplicate ingestion
 4. Extract text from PDF using pypdf
 5. Split text into clean, semantic chunks with rich metadata (document name, page, section)
-6. Generate dense embeddings once (sentence-transformers/all-MiniLM-L6-v2)
+6. Generate dense embeddings once (BAAI/bge-small-en-v1.5, 384-dim)
 7. Persist document metadata in `knowledge_documents` and chunks + vectors in `knowledge_chunks`
 """
 
@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DocumentExtractionError, StorageOperationError
 from app.core.logging import get_logger
 from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
-from app.services.rag_service import RagService
+from app.rag.service import RagService
 from app.services.storage_service import (
     DEFAULT_KNOWLEDGE_BUCKET,
     REFERENCE_DOCS_PREFIX,
@@ -34,7 +34,7 @@ from app.services.storage_service import (
 
 logger = get_logger("pharmaone.ingestion")
 
-# Standard operational reference documents
+# Standard operational reference documents in Supabase Storage (knowledge-base/reference-documents/)
 INITIAL_RAG_DOCUMENTS = [
     {
         "filename": "Form-450-Deviation-Report-Form.pdf",
@@ -49,10 +49,10 @@ INITIAL_RAG_DOCUMENTS = [
         "doc_code": "ICH-Q9-R1",
     },
     {
-        "filename": "using-cgmps-documents.pdf",
-        "title": "Using cGMPs in Manufacturing and Quality Operations",
-        "doc_type": "cGMP Standard / SOP",
-        "doc_code": "CGMP-DOC",
+        "filename": "QUALITY CONTROL SAMPLE SUBMISSION AND TRACKING FORM.pdf",
+        "title": "Quality Control Sample Submission and Tracking Form Standard",
+        "doc_type": "Form / SOP Standard",
+        "doc_code": "QC-SAMPLE-SUBMISSION",
     },
 ]
 
@@ -245,6 +245,7 @@ class IngestionService:
             )
             session.add(chunk_rec)
 
+        doc_id_str = str(doc.id)
         doc.status = "indexed"
         await session.commit()
 
@@ -252,7 +253,7 @@ class IngestionService:
             "Successfully indexed '%s' (%d chunks, doc_id=%s, checksum=%s)",
             filename,
             len(chunks),
-            doc.id,
+            doc_id_str,
             checksum,
         )
 
@@ -261,7 +262,7 @@ class IngestionService:
             "status": "indexed",
             "checksum": checksum,
             "chunk_count": len(chunks),
-            "document_id": str(doc.id),
+            "document_id": doc_id_str,
         }
 
     async def ingest_all_initial_documents(

@@ -80,8 +80,8 @@ async def test_repeated_demo_flow_with_ai_recovery(client: AsyncClient):
         side_effect=TimeoutError("Simulated LLM Gateway Timeout")
     )
     with patch(
-        "app.workflows.deviation_intake._get_groq_client",
-        return_value=(mock_client, "llama-3.3-70b-versatile"),
+        "app.ai.extraction._get_groq_client",
+        return_value=(mock_client, "openai/gpt-oss-20b"),
     ):
         resp_err = await client.post("/api/v1/deviations/process", json=SAMPLE_DEVIATIONS[1])
         # Workflow recovers safely with heuristic fallback instead of crashing with 500
