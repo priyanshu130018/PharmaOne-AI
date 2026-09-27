@@ -235,9 +235,6 @@ export default function AiAssistantPanel() {
           <h2 className="text-base font-semibold text-slate-900">
             AI Deviation Assistant
           </h2>
-          <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700 uppercase tracking-wider">
-            BETA
-          </span>
         </div>
         {(extraction || lastSaved) && (
           <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">

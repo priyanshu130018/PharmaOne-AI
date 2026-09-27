@@ -366,10 +366,11 @@ describe("AiAssistantPanel - AI Deviation Assistant", () => {
       screen.getByText("Granulation impeller speed exceeded the approved range")
     ).toBeInTheDocument();
 
-    // 3. Verify left form state simultaneously updated
+    // 3. Verify left form state simultaneously updated and highlighted
     expect(store.getState().deviations.form.title).toBe(
       "Granulation impeller speed exceeded the approved range"
     );
+    expect(store.getState().deviations.highlightedFields.title).toBe(true);
   });
 
   it("9. structured change display: multiple fields show '✓ 3 changes applied' with audit-style values", async () => {
@@ -431,10 +432,14 @@ describe("AiAssistantPanel - AI Deviation Assistant", () => {
     expect(screen.getByText("Batch / Lot Number")).toBeInTheDocument();
     expect(screen.getByText("LOT-2026-051")).toBeInTheDocument();
 
-    // 3. Verify left form state updated simultaneously
+    // 3. Verify left form state updated simultaneously and all 3 fields are highlighted
     expect(store.getState().deviations.form.site_plant).toBe("Demo Manufacturing Site");
     expect(store.getState().deviations.form.product_name).toBe("Paracetamol Tablets 500 mg");
     expect(store.getState().deviations.form.batch_number).toBe("LOT-2026-051");
+
+    expect(store.getState().deviations.highlightedFields.site_plant).toBe(true);
+    expect(store.getState().deviations.highlightedFields.product_name).toBe(true);
+    expect(store.getState().deviations.highlightedFields.batch_number).toBe(true);
   });
 
   it("10. clarification request: ambiguous change does not modify form or show fake confirmation", async () => {
@@ -472,9 +477,10 @@ describe("AiAssistantPanel - AI Deviation Assistant", () => {
     expect(screen.queryByText(/Change applied/i)).toBeNull();
     expect(screen.queryByText(/changes applied/i)).toBeNull();
 
-    // Form left intact
+    // Form left intact, no highlights added
     expect(store.getState().deviations.form.site_plant).toBe("Plant 1");
     expect(store.getState().deviations.form.batch_number).toBe("LOT-2026-042");
+    expect(store.getState().deviations.highlightedFields || {}).toEqual({});
   });
 });
 

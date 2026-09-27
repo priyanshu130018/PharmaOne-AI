@@ -6,6 +6,7 @@ import { configureStore } from "@reduxjs/toolkit";
 import deviationReducer, {
   applySuggestions,
   updateField,
+  updateMultipleFields,
   resetForm,
 } from "../../features/deviation/deviationSlice.js";
 import assistantReducer from "../../features/assistant/assistantSlice.js";
@@ -337,6 +338,144 @@ describe("LogDeviationForm - AIVOA Intake Workflow", () => {
     expect(screen.getByText(/Critical parameter breach directly impacting blend uniformity/i)).toBeInTheDocument();
     expect(screen.getByText(/SOP-MFG-042 Section 5.1/i)).toBeInTheDocument();
     expect(screen.getByText(/Confirmed \(SUBMITTED\)/i)).toBeInTheDocument();
+  });
+
+  it("9. visual highlighting: chatbot-applied single field change highlights field container with green background and border", () => {
+    const { store } = renderWithStore({
+      deviations: {
+        form: {
+          site_plant: "Demo Manufacturing Site",
+          batch_number: "LOT-2026-042",
+        },
+      },
+    });
+
+    // Verify initial state: not highlighted
+    const siteContainerBefore = screen.getByTestId("field-container-site_plant");
+    expect(siteContainerBefore.className).not.toContain("bg-emerald-50");
+    expect(screen.queryByTestId("ai-updated-indicator")).toBeNull();
+
+    // Chatbot applies change to Site
+    act(() => {
+      store.dispatch(
+        updateMultipleFields({
+          changes: [
+            {
+              field: "site",
+              label: "Site / Plant",
+              old_value: "Demo Manufacturing Site",
+              new_value: "Vasundha Pharma",
+            },
+          ],
+        })
+      );
+    });
+
+    // 1. Value updated on the form
+    expect(screen.getByLabelText(/Site \/ Plant/i)).toHaveValue("Vasundha Pharma");
+
+    // 2. Field container receives subtle green background and green border
+    const siteContainerAfter = screen.getByTestId("field-container-site_plant");
+    expect(siteContainerAfter.className).toContain("bg-emerald-50");
+    expect(siteContainerAfter.className).toContain("border-emerald-400");
+
+    // 3. No status label is shown; the field itself provides the change highlight
+    expect(screen.queryByTestId("ai-updated-indicator")).toBeNull();
+
+    // 4. Non-changed fields remain unhighlighted
+    const batchContainer = screen.getByTestId("field-container-batch_number");
+    expect(batchContainer.className).not.toContain("bg-emerald-50");
+    expect(batchContainer.className).not.toContain("border-emerald-400");
+  });
+
+  it("10. visual highlighting: chatbot-applied multiple field changes highlight all changed fields", () => {
+    const { store } = renderWithStore();
+
+    act(() => {
+      store.dispatch(
+        updateMultipleFields({
+          changes: [
+            {
+              field: "site",
+              label: "Site / Plant",
+              new_value: "Demo Manufacturing Site",
+            },
+            {
+              field: "product_name",
+              label: "Related Product / Material",
+              new_value: "Paracetamol Tablets 500 mg",
+            },
+            {
+              field: "batch_number",
+              label: "Batch / Lot Number",
+              new_value: "LOT-2026-051",
+            },
+          ],
+        })
+      );
+    });
+
+    // 1. All 3 field containers have green background and border
+    const siteContainer = screen.getByTestId("field-container-site_plant");
+    const productContainer = screen.getByTestId("field-container-product_name");
+    const batchContainer = screen.getByTestId("field-container-batch_number");
+
+    expect(siteContainer.className).toContain("bg-emerald-50");
+    expect(siteContainer.className).toContain("border-emerald-400");
+
+    expect(productContainer.className).toContain("bg-emerald-50");
+    expect(productContainer.className).toContain("border-emerald-400");
+
+    expect(batchContainer.className).toContain("bg-emerald-50");
+    expect(batchContainer.className).toContain("border-emerald-400");
+
+    // 2. No status labels are shown; the changed fields provide the visual highlight
+    expect(screen.queryByTestId("ai-updated-indicator")).toBeNull();
+
+    // 3. Other fields remain unhighlighted
+    const titleContainer = screen.getByTestId("field-container-title");
+    expect(titleContainer.className).not.toContain("bg-emerald-50");
+  });
+
+  it("11. visual highlighting removal: manual editing or reset removes the green highlight for that field", () => {
+    const { store } = renderWithStore();
+
+    // 1. Chatbot modifies site and batch
+    act(() => {
+      store.dispatch(
+        updateMultipleFields({
+          changes: [
+            { field: "site", new_value: "Vasundha Pharma" },
+            { field: "batch_number", new_value: "LOT-2026-051" },
+          ],
+        })
+      );
+    });
+
+    const siteContainer = screen.getByTestId("field-container-site_plant");
+    const batchContainer = screen.getByTestId("field-container-batch_number");
+
+    expect(siteContainer.className).toContain("bg-emerald-50");
+    expect(batchContainer.className).toContain("bg-emerald-50");
+
+    // 2. User manually edits Site / Plant
+    const siteInput = screen.getByLabelText(/Site \/ Plant/i);
+    fireEvent.change(siteInput, { target: { value: "Manually Typed Plant" } });
+
+    // 3. Highlight is removed from site_plant
+    expect(screen.getByTestId("field-container-site_plant").className).not.toContain("bg-emerald-50");
+    expect(screen.getByTestId("field-container-site_plant").className).not.toContain("border-emerald-400");
+
+    // 4. Batch / Lot Number still keeps its highlight!
+    expect(screen.getByTestId("field-container-batch_number").className).toContain("bg-emerald-50");
+    expect(screen.getByTestId("field-container-batch_number").className).toContain("border-emerald-400");
+
+    // 5. Resetting the form clears all highlights
+    const resetBtn = screen.getByRole("button", { name: /Reset Form/i });
+    fireEvent.click(resetBtn);
+
+    expect(screen.getByTestId("field-container-batch_number").className).not.toContain("bg-emerald-50");
+    expect(screen.queryByTestId("ai-updated-indicator")).toBeNull();
   });
 });
 

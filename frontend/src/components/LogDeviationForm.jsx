@@ -29,9 +29,16 @@ import {
 
 export default function LogDeviationForm() {
   const dispatch = useDispatch();
-  const { form, aiFields = {}, userEditedFields = {}, aiSnapshot, saveStatus, saveError, lastSaved } = useSelector(
-    (s) => s.deviations
-  );
+  const {
+    form,
+    aiFields = {},
+    userEditedFields = {},
+    highlightedFields = {},
+    aiSnapshot,
+    saveStatus,
+    saveError,
+    lastSaved,
+  } = useSelector((s) => s.deviations || {});
   const assistant = useSelector((s) => s.assistant || {});
   const [errors, setErrors] = useState({});
 
@@ -122,6 +129,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Site / Plant"
                 htmlFor="site_plant"
+                isHighlighted={Boolean(highlightedFields.site_plant)}
                 badge={<AiFieldBadge isAi={aiFields.site_plant} isUserEdited={userEditedFields.site_plant} />}
               >
                 <TextInput
@@ -135,6 +143,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Date of Occurrence"
                 htmlFor="occurred_on"
+                isHighlighted={Boolean(highlightedFields.occurred_on)}
                 badge={<AiFieldBadge isAi={aiFields.occurred_on} isUserEdited={userEditedFields.occurred_on} />}
               >
                 <TextInput
@@ -151,6 +160,7 @@ export default function LogDeviationForm() {
               htmlFor="title"
               required
               error={errors.title}
+              isHighlighted={Boolean(highlightedFields.title)}
               badge={<AiFieldBadge isAi={aiFields.title} isUserEdited={userEditedFields.title} />}
             >
               <TextInput
@@ -166,6 +176,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Source Channel"
                 htmlFor="source"
+                isHighlighted={Boolean(highlightedFields.source)}
                 badge={<AiFieldBadge isAi={aiFields.source} isUserEdited={userEditedFields.source} />}
               >
                 <Select
@@ -181,6 +192,7 @@ export default function LogDeviationForm() {
                 htmlFor="deviation_type"
                 required
                 error={errors.deviation_type}
+                isHighlighted={Boolean(highlightedFields.deviation_type)}
                 badge={<AiFieldBadge isAi={aiFields.deviation_type} isUserEdited={userEditedFields.deviation_type} />}
               >
                 <Select
@@ -197,6 +209,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Related Product / Material"
                 htmlFor="product_name"
+                isHighlighted={Boolean(highlightedFields.product_name)}
                 badge={<AiFieldBadge isAi={aiFields.product_name} isUserEdited={userEditedFields.product_name} />}
               >
                 <TextInput
@@ -210,6 +223,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Batch / Lot Number"
                 htmlFor="batch_number"
+                isHighlighted={Boolean(highlightedFields.batch_number)}
                 badge={<AiFieldBadge isAi={aiFields.batch_number} isUserEdited={userEditedFields.batch_number} />}
               >
                 <TextInput
@@ -233,6 +247,7 @@ export default function LogDeviationForm() {
               htmlFor="description"
               required
               error={errors.description}
+              isHighlighted={Boolean(highlightedFields.description)}
               badge={<AiFieldBadge isAi={aiFields.description} isUserEdited={userEditedFields.description} />}
             >
               <TextArea
@@ -248,6 +263,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Initial Impact"
                 htmlFor="impact"
+                isHighlighted={Boolean(highlightedFields.impact)}
                 badge={<AiFieldBadge isAi={aiFields.impact} isUserEdited={userEditedFields.impact} />}
               >
                 <Select
@@ -262,6 +278,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Initial Severity"
                 htmlFor="severity"
+                isHighlighted={Boolean(highlightedFields.severity)}
                 badge={<AiFieldBadge isAi={aiFields.severity} isUserEdited={userEditedFields.severity} />}
               >
                 <Select
@@ -279,6 +296,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Equipment / Asset"
                 htmlFor="equipment"
+                isHighlighted={Boolean(highlightedFields.equipment)}
                 badge={<AiFieldBadge isAi={aiFields.equipment} isUserEdited={userEditedFields.equipment} />}
               >
                 <TextInput
@@ -292,6 +310,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Department"
                 htmlFor="department"
+                isHighlighted={Boolean(highlightedFields.department)}
                 badge={<AiFieldBadge isAi={aiFields.department} isUserEdited={userEditedFields.department} />}
               >
                 <TextInput
@@ -305,6 +324,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Manufacturing Stage"
                 htmlFor="manufacturing_stage"
+                isHighlighted={Boolean(highlightedFields.manufacturing_stage)}
                 badge={<AiFieldBadge isAi={aiFields.manufacturing_stage} isUserEdited={userEditedFields.manufacturing_stage} />}
               >
                 <TextInput
@@ -321,6 +341,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Parameter"
                 htmlFor="parameter"
+                isHighlighted={Boolean(highlightedFields.parameter)}
                 badge={<AiFieldBadge isAi={aiFields.parameter} isUserEdited={userEditedFields.parameter} />}
               >
                 <TextInput
@@ -334,6 +355,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Duration"
                 htmlFor="duration"
+                isHighlighted={Boolean(highlightedFields.duration)}
                 badge={<AiFieldBadge isAi={aiFields.duration} isUserEdited={userEditedFields.duration} />}
               >
                 <TextInput
@@ -349,6 +371,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Approved Range"
                 htmlFor="expected_condition"
+                isHighlighted={Boolean(highlightedFields.expected_condition)}
                 badge={<AiFieldBadge isAi={aiFields.expected_condition} isUserEdited={userEditedFields.expected_condition} />}
               >
                 <TextInput
@@ -362,6 +385,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Actual Value"
                 htmlFor="actual_condition"
+                isHighlighted={Boolean(highlightedFields.actual_condition)}
                 badge={<AiFieldBadge isAi={aiFields.actual_condition} isUserEdited={userEditedFields.actual_condition} />}
               >
                 <TextInput
@@ -375,6 +399,7 @@ export default function LogDeviationForm() {
               <Field
                 label="Batch Status"
                 htmlFor="batch_status"
+                isHighlighted={Boolean(highlightedFields.batch_status)}
                 badge={<AiFieldBadge isAi={aiFields.batch_status} isUserEdited={userEditedFields.batch_status} />}
               >
                 <Select
@@ -390,6 +415,7 @@ export default function LogDeviationForm() {
             <Field
               label="Immediate Action Taken"
               htmlFor="immediate_action"
+              isHighlighted={Boolean(highlightedFields.immediate_action)}
               badge={<AiFieldBadge isAi={aiFields.immediate_action} isUserEdited={userEditedFields.immediate_action} />}
             >
               <TextInput
@@ -400,7 +426,15 @@ export default function LogDeviationForm() {
               />
             </Field>
 
-            <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 bg-slate-50/50">
+            <div
+              data-testid="field-container-qa_notified"
+              data-field="qa_notified"
+              className={`flex items-center justify-between rounded-lg border px-3 py-2 transition-all duration-200 ${
+                highlightedFields.qa_notified
+                  ? "bg-emerald-50/90 border-emerald-400 p-2.5 ring-1 ring-emerald-300 shadow-xs"
+                  : "border-slate-200 bg-slate-50/50"
+              }`}
+            >
               <label htmlFor="qa_notified" className="flex cursor-pointer items-center gap-2 text-xs text-slate-700">
                 <input
                   id="qa_notified"
@@ -411,7 +445,9 @@ export default function LogDeviationForm() {
                 />
                 <span className="font-medium">QA Notified upon detection</span>
               </label>
-              <AiFieldBadge isAi={aiFields.qa_notified} isUserEdited={userEditedFields.qa_notified} />
+              <div className="flex items-center gap-1.5">
+                <AiFieldBadge isAi={aiFields.qa_notified} isUserEdited={userEditedFields.qa_notified} />
+              </div>
             </div>
           </div>
 

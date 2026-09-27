@@ -71,6 +71,7 @@ const initialState = {
   originalAiExtraction: null,
   aiFields: {}, // { [fieldName]: true } - tracks fields auto-populated by AI
   userEditedFields: {}, // { [fieldName]: true } - tracks fields manually edited by user
+  highlightedFields: {}, // { [fieldName]: true } - tracks fields updated by chat AI
   aiSnapshot: null, // { ai_extraction, ai_assessment } for audit trail
   saveStatus: "idle", // "idle" | "loading" | "succeeded" | "failed"
   saveError: null,
@@ -88,15 +89,19 @@ const deviationSlice = createSlice({
       const { name, value } = action.payload;
       state.form = state.form || {};
       state.userEditedFields = state.userEditedFields || {};
+      state.highlightedFields = state.highlightedFields || {};
       state.form[name] = value;
       // Mark field as explicitly modified by the user
       state.userEditedFields[name] = true;
+      // Remove the green highlight when the user manually edits that field
+      delete state.highlightedFields[name];
     },
     updateMultipleFields(state, action) {
       const { changes } = action.payload || {};
       if (!changes) return;
       state.form = state.form || {};
       state.userEditedFields = state.userEditedFields || {};
+      state.highlightedFields = state.highlightedFields || {};
       const aliasMap = {
         site: "site_plant",
         plant: "site_plant",
@@ -123,6 +128,7 @@ const deviationSlice = createSlice({
           if (canonicalKey in state.form) {
             state.form[canonicalKey] = val;
             state.userEditedFields[canonicalKey] = true;
+            state.highlightedFields[canonicalKey] = true;
           }
         });
       } else if (typeof changes === "object") {
@@ -131,15 +137,20 @@ const deviationSlice = createSlice({
           if (canonicalKey in state.form) {
             state.form[canonicalKey] = val;
             state.userEditedFields[canonicalKey] = true;
+            state.highlightedFields[canonicalKey] = true;
           }
         });
       }
+    },
+    clearHighlightedFields(state) {
+      state.highlightedFields = {};
     },
     resetForm(state) {
       state.form = { ...emptyForm };
       state.originalAiExtraction = null;
       state.aiFields = {};
       state.userEditedFields = {};
+      state.highlightedFields = {};
       state.aiSnapshot = null;
       state.saveStatus = "idle";
       state.saveError = null;
@@ -338,6 +349,7 @@ const deviationSlice = createSlice({
 export const {
   updateField,
   updateMultipleFields,
+  clearHighlightedFields,
   resetForm,
   applySuggestions,
   clearSaveState,

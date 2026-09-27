@@ -1,15 +1,35 @@
 import React from "react";
 
-export function Field({ label, htmlFor, error, help, children, required, badge }) {
+export function Field({
+  label,
+  htmlFor,
+  error,
+  help,
+  children,
+  required,
+  badge,
+  isHighlighted = false,
+  className = "",
+}) {
   return (
-    <div>
+    <div
+      data-testid={htmlFor ? `field-container-${htmlFor}` : undefined}
+      data-field={htmlFor}
+      className={`rounded-lg transition-all duration-200 ${
+        isHighlighted
+          ? "bg-emerald-50/90 border border-emerald-400 p-2.5 ring-1 ring-emerald-300 shadow-xs"
+          : "border border-transparent p-0"
+      } ${className}`}
+    >
       {label && (
         <div className="mb-1 flex items-center justify-between gap-1">
           <label htmlFor={htmlFor} className="field-label mb-0">
             {label}
             {required && <span className="ml-1 text-red-500">*</span>}
           </label>
-          {badge}
+          <div className="flex items-center gap-1.5">
+            {badge}
+          </div>
         </div>
       )}
       {children}
