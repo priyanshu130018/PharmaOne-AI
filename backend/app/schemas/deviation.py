@@ -44,6 +44,7 @@ class DeviationBase(BaseModel):
 
     # Event
     manufacturing_stage: str | None = Field(default=None, max_length=160)
+    process_operation: str | None = Field(default=None, max_length=160)
     equipment: str | None = Field(default=None, max_length=160)
     title: str | None = Field(default=None, max_length=255)
     title_short_description: str | None = Field(default=None, max_length=255)
@@ -75,7 +76,18 @@ class DeviationBase(BaseModel):
     ai_recommended_impact: str | None = None
     ai_recommended_severity: str | None = None
     ai_reason: str | None = None
-    ai_evidence: list[str] | dict | None = None
+    ai_evidence: list[Any] | dict | None = None
+
+    # Connected QMS Workflow Relationships
+    batch_id: uuid.UUID | None = None
+    manufacturing_step_id: uuid.UUID | None = None
+    in_process_check_id: uuid.UUID | None = None
+    workflow_status: str | None = None
+    closed_at: datetime | None = None
+    closed_by: str | None = None
+    closure_reason: str | None = None
+    closure_summary: str | None = None
+    effectiveness_result: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -134,7 +146,18 @@ class DeviationBase(BaseModel):
             # Deviation type normalization
             dev_type = data.get("deviation_type")
             if isinstance(dev_type, str) and dev_type.strip():
-                data["deviation_type"] = dev_type.strip().lower()
+                clean_type = dev_type.strip().lower()
+                if "process" in clean_type:
+                    clean_type = "process"
+                data["deviation_type"] = clean_type
+
+            # Source normalization
+            src = data.get("source")
+            if isinstance(src, str) and src.strip():
+                clean_src = src.strip().lower()
+                if "manufacturing" in clean_src or "ipc" in clean_src:
+                    clean_src = "manufacturing"
+                data["source"] = clean_src
 
             # Date normalization and empty-string cleanup
             for dt_k in ("occurred_on", "date_of_occurrence", "detected_on"):
@@ -204,6 +227,7 @@ class DeviationUpdate(BaseModel):
     batch_number: str | None = Field(default=None, max_length=120)
     batch_lot_number: str | None = Field(default=None, max_length=120)
     manufacturing_stage: str | None = Field(default=None, max_length=160)
+    process_operation: str | None = Field(default=None, max_length=160)
     equipment: str | None = Field(default=None, max_length=160)
     title: str | None = Field(default=None, min_length=3, max_length=255)
     title_short_description: str | None = Field(default=None, min_length=3, max_length=255)
@@ -230,7 +254,16 @@ class DeviationUpdate(BaseModel):
     ai_recommended_impact: str | None = None
     ai_recommended_severity: str | None = None
     ai_reason: str | None = None
-    ai_evidence: list[str] | dict | None = None
+    ai_evidence: list[Any] | dict | None = None
+    batch_id: uuid.UUID | None = None
+    manufacturing_step_id: uuid.UUID | None = None
+    in_process_check_id: uuid.UUID | None = None
+    workflow_status: str | None = None
+    closed_at: datetime | None = None
+    closed_by: str | None = None
+    closure_reason: str | None = None
+    closure_summary: str | None = None
+    effectiveness_result: str | None = None
 
 
 class DeviationRead(DeviationBase):
@@ -246,6 +279,10 @@ class DeviationRead(DeviationBase):
     ai_assessment: dict | None = None
     created_at: datetime
     updated_at: datetime
+    investigation_id: uuid.UUID | None = None
+    investigation_reference: str | None = None
+    capa_id: uuid.UUID | None = None
+    capa_reference: str | None = None
 
 
 class DeviationList(BaseModel):

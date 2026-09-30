@@ -160,6 +160,14 @@ export const api = {
   createDeviation: (payload) =>
     request("/deviations", { method: "POST", body: payload }),
 
+  getDeviation: (id) => request(`/deviations/${id}`),
+
+  updateDeviation: (id, payload) =>
+    request(`/deviations/${id}`, { method: "PUT", body: payload }),
+
+  confirmDeviationSeverity: (deviationId, payload) =>
+    request(`/deviations/${deviationId}/confirm-severity`, { method: "POST", body: payload }),
+
   listDeviations: (params = {}) => {
     const qs = new URLSearchParams();
     Object.entries(params).forEach(([k, v]) => {
@@ -171,7 +179,144 @@ export const api = {
 
   getReportSummary: () => request("/reports/summary"),
 
+  // QMS Lifecycle Endpoints
+  getDashboardSummary: () => request("/dashboard/summary"),
+  getDashboardActivity: () => request("/dashboard/activity"),
+
+  // Batches & Manufacturing
+  listBatches: () => request("/batches"),
+  createBatch: (payload) => request("/batches", { method: "POST", body: payload }),
+  getBatch: (id) => request(`/batches/${id}`),
+  addManufacturingStep: (batchId, payload) =>
+    request(`/batches/${batchId}/steps`, { method: "POST", body: payload }),
+  getBatchProcessChecks: (batchId) => request(`/batches/${batchId}/process-checks`),
+  createProcessCheck: (batchId, payload) =>
+    request(`/batches/${batchId}/process-checks`, { method: "POST", body: payload }),
+  createRawMaterial: (payload) => request("/raw-materials", { method: "POST", body: payload }),
+  getAuditTrail: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null && v !== "") qs.append(k, v);
+    });
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request(`/audit-trail${suffix}`);
+  },
+
+  // Investigation Workflow
+  startInvestigation: (deviationId) =>
+    request(`/deviations/${deviationId}/start-investigation`, { method: "POST" }),
+  getInvestigation: (id) => request(`/investigations/${id}`),
+  addInvestigationTask: (investigationId, payload) =>
+    request(`/investigations/${investigationId}/tasks`, { method: "POST", body: payload }),
+  updateInvestigationTask: (investigationId, taskId, payload) =>
+    request(`/investigations/${investigationId}/tasks/${taskId}`, { method: "PATCH", body: payload }),
+  addInvestigationEvidence: (investigationId, payload) =>
+    request(`/investigations/${investigationId}/evidence`, { method: "POST", body: payload }),
+  confirmRootCause: (investigationId, payload) =>
+    request(`/investigations/${investigationId}/root-cause`, { method: "POST", body: payload }),
+  completeInvestigation: (investigationId, payload) =>
+    request(`/investigations/${investigationId}/complete`, { method: "POST", body: payload }),
+
+  // CAPA
+  createCapa: (payload) => request("/capas", { method: "POST", body: payload }),
+  getCapa: (id) => request(`/capas/${id}`),
+  addCapaAction: (capaId, payload) =>
+    request(`/capas/${capaId}/actions`, { method: "POST", body: payload }),
+  updateCapaAction: (capaId, actionId, payload) =>
+    request(`/capas/${capaId}/actions/${actionId}`, { method: "PATCH", body: payload }),
+  recordEffectiveness: (capaId, payload) =>
+    request(`/capas/${capaId}/effectiveness`, { method: "POST", body: payload }),
+
+  // Closure
+  closeDeviation: (deviationId, payload) =>
+    request(`/deviations/${deviationId}/close`, { method: "POST", body: payload }),
+
+  // Linked Records
+  getLinkedRecords: (deviationId) =>
+    request(`/deviations/${deviationId}/linked-records`),
+
+  // Batch Release
+  getBatchRelease: (id) => request(`/batch-releases/${id}`),
+  decideBatchRelease: (id, payload) =>
+    request(`/batch-releases/${id}/decision`, { method: "POST", body: payload }),
+
+  // Complaints & Suppliers
+  listComplaints: () => request("/complaints"),
+  listSuppliers: () => request("/suppliers"),
+  listRawMaterials: () => request("/raw-materials"),
+
+  // AI Quality Assistant Actions
+  aiSuggestInvestigation: (payload) =>
+    request("/ai/investigation/suggest", { method: "POST", body: payload }),
+  aiGenerate5Whys: (payload) =>
+    request("/ai/root-cause/generate", { method: "POST", body: payload }),
+  aiSuggestCapa: (payload) =>
+    request("/ai/capa/suggest", { method: "POST", body: payload }),
+  aiSummarizeEffectiveness: (payload) =>
+    request("/ai/effectiveness/summarize", { method: "POST", body: payload }),
+  aiDraftClosure: (payload) =>
+    request("/ai/closure/draft", { method: "POST", body: payload }),
+
   health: () => request("/health"),
 };
 
+export const {
+  createDeviation,
+  getDeviation,
+  updateDeviation,
+  listDeviations,
+  getReportSummary,
+  getDashboardSummary,
+  getDashboardActivity,
+  listBatches,
+  createBatch,
+  getBatch,
+  addManufacturingStep,
+  getBatchProcessChecks,
+  createProcessCheck,
+  createRawMaterial,
+  getAuditTrail,
+  startInvestigation,
+  getInvestigation,
+  addInvestigationTask,
+  updateInvestigationTask,
+  addInvestigationEvidence,
+  confirmRootCause,
+  completeInvestigation,
+  createCapa,
+  getCapa,
+  addCapaAction,
+  updateCapaAction,
+  recordEffectiveness,
+  closeDeviation,
+  getLinkedRecords,
+  getBatchRelease,
+  decideBatchRelease,
+  listComplaints,
+  listSuppliers,
+  listRawMaterials,
+  aiSuggestInvestigation,
+  aiGenerate5Whys,
+  aiSuggestCapa,
+  aiSummarizeEffectiveness,
+  aiDraftClosure,
+  health,
+} = api;
+
+// Aliases for component convenience
+export const getDeviationLinkedRecords = (id) => api.getLinkedRecords(id);
+export const getAuditLogs = () => api.getDashboardActivity();
+export const saveInvestigationRootCause = (id, payload) => api.confirmRootCause(id, payload);
+export const recordCapaEffectiveness = (id, payload) => api.recordEffectiveness(id, payload);
+export const getComplaints = () => api.listComplaints();
+export const getSuppliers = () => api.listSuppliers();
+export const getRawMaterials = () => api.listRawMaterials();
+export const aiSuggestInvestigationPlan = (invId, devId) =>
+  api.aiSuggestInvestigation({ investigation_id: invId, deviation_id: devId });
+export const aiSuggestCapaActions = (capaId, rootCause, devId) =>
+  api.aiSuggestCapa({ capa_id: capaId, root_cause: rootCause, deviation_id: devId });
+export const aiDraftClosureSummary = (devId) =>
+  api.aiDraftClosure({ deviation_id: devId });
+
 export { ApiError, API_BASE };
+

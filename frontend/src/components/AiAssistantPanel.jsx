@@ -83,9 +83,8 @@ export default function AiAssistantPanel() {
     if (file) handleUploadFile(file);
   };
 
-  const handleSendChat = async (e) => {
-    e.preventDefault();
-    const query = chatInput.trim();
+  const executeChat = async (queryText) => {
+    const query = (queryText || "").trim();
     if (!query || isTyping || isUploading) return;
 
     const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -213,6 +212,11 @@ export default function AiAssistantPanel() {
     }
   };
 
+  const handleSendChat = (e) => {
+    e.preventDefault();
+    executeChat(chatInput);
+  };
+
   useEffect(() => {
     if (chatBottomRef.current && typeof chatBottomRef.current.scrollIntoView === "function") {
       chatBottomRef.current.scrollIntoView({ behavior: "smooth" });
@@ -247,9 +251,9 @@ export default function AiAssistantPanel() {
       {/* Independently Scrollable Chat Conversation Area */}
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-3">
         {chatMessages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center text-center text-slate-400 p-6">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600 mb-3 shadow-xs">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="flex h-full flex-col items-center justify-center text-center text-slate-400 p-4">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-50 text-blue-600 mb-2 shadow-xs">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -261,9 +265,33 @@ export default function AiAssistantPanel() {
             <p className="text-xs font-semibold text-slate-700 max-w-xs leading-relaxed">
               Describe your deviation or ask me to update any field in the form.
             </p>
-            <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
-              Click 📎 to upload a deviation document or type an instruction below.
+            <p className="text-[11px] text-slate-400 mt-0.5 max-w-xs">
+              Click 📎 to upload a document or choose a suggested inquiry below:
             </p>
+
+            {/* Quick Action Prompt Chips */}
+            <div className="w-full mt-3.5 space-y-1.5 text-left">
+              <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider px-1">
+                Suggested QMS Workflows
+              </div>
+              {[
+                "Assess 84 °C reactor excursion severity & impact",
+                "Recommend investigation tasks for cooling-valve actuator",
+                "Draft 5 Whys root cause analysis for actuator malfunction",
+                "Suggest CAPA corrective & preventive actions",
+                "Evaluate 5-batch effectiveness criteria"
+              ].map((chipPrompt, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => executeChat(chipPrompt)}
+                  className="w-full text-left px-2.5 py-1.5 text-[11px] rounded-lg bg-slate-50 border border-slate-200 text-slate-700 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-800 transition flex items-center justify-between group shadow-2xs cursor-pointer"
+                >
+                  <span className="truncate mr-1 font-medium">{chipPrompt}</span>
+                  <span className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity font-bold">→</span>
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           chatMessages.map((msg) => (
@@ -283,6 +311,14 @@ export default function AiAssistantPanel() {
                     : "bg-white border border-slate-200 text-slate-800"
                 }`}
               >
+                {msg.sender === "assistant" && (
+                  <div className="flex items-center justify-between gap-1 mb-1.5 pb-1 border-b border-slate-100">
+                    <span className="text-[9px] font-bold text-indigo-700 uppercase tracking-wider bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200">
+                      AI Advisory Draft
+                    </span>
+                    <span className="text-[9px] text-slate-400">Requires QA Review</span>
+                  </div>
+                )}
                 {msg.sender === "assistant" && msg.changes && msg.changes.length > 0 ? (
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5 font-bold text-emerald-700 text-xs">

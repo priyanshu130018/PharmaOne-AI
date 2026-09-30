@@ -29,12 +29,5 @@ USER appuser
 # BACKEND_PORT environment variable at runtime.
 EXPOSE 8000
 
-# Container-level health check (liveness). Uses stdlib so no extra packages
-# are required. Reads BACKEND_PORT from the environment.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD python -c "import os,urllib.request,sys; \
-url='http://127.0.0.1:%s/api/v1/health' % os.environ['BACKEND_PORT']; \
-sys.exit(0 if urllib.request.urlopen(url, timeout=4).status==200 else 1)" || exit 1
-
-# Bind to the required BACKEND_PORT (shell form so the variable is expanded).
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${BACKEND_PORT}"]
+# Execute entrypoint: wait for DB, run migrations, seed data, and start Uvicorn.
+CMD ["python", "-m", "app.scripts.entrypoint"]

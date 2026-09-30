@@ -1,12 +1,11 @@
 """Authentication API endpoints (Supabase Auth bridge)."""
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from supabase import create_client
 
 from app.core.auth import AuthenticatedUser, get_current_user, record_audit_event, _get_supabase_client
 from app.core.enums import AuditAction

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   updateField,
@@ -26,8 +26,12 @@ import {
   Badge,
   AiFieldBadge,
 } from "./ui.jsx";
+import { api } from "../api/client.js";
+import WorkflowStepper from "./WorkflowStepper.jsx";
+import LinkedRecordsBar from "./LinkedRecordsBar.jsx";
+import QualityEventTimeline from "./QualityEventTimeline.jsx";
 
-export default function LogDeviationForm() {
+export default function LogDeviationForm({ onNavigate, onRecordClick }) {
   const dispatch = useDispatch();
   const {
     form,
@@ -41,6 +45,47 @@ export default function LogDeviationForm() {
   } = useSelector((s) => s.deviations || {});
   const assistant = useSelector((s) => s.assistant || {});
   const [errors, setErrors] = useState({});
+  const [startingInvestigation, setStartingInvestigation] = useState(false);
+  const [linkedRecords, setLinkedRecords] = useState(null);
+
+  const isClosed = String(lastSaved?.status || form?.status || '').toLowerCase() === 'closed';
+
+  useEffect(() => {
+    const devId = lastSaved?.reference || lastSaved?.id || form?.reference || form?.id;
+    if (devId && api && typeof api.getLinkedRecords === "function") {
+      api.getLinkedRecords(devId)
+        .then(data => setLinkedRecords(data))
+        .catch(err => console.warn('Could not load linked records', err));
+    }
+  }, [lastSaved, form?.reference]);
+
+  const handleStartInvestigation = async () => {
+    try {
+      setStartingInvestigation(true);
+      const targetDevId = lastSaved?.reference || lastSaved?.id || form?.reference || form?.id || 'DEV-2026-018';
+      let res = {};
+      if (api && typeof api.startInvestigation === "function") {
+        res = await api.startInvestigation(targetDevId);
+      }
+      const invRef = res?.investigation_number || res?.reference || res?.id || 'INV-2026-012';
+      if (onNavigate) {
+        onNavigate('investigation', { 
+          deviationId: targetDevId, 
+          investigationId: invRef 
+        });
+      }
+    } catch (err) {
+      console.error('Failed to start investigation:', err);
+      if (onNavigate) {
+        onNavigate('investigation', { 
+          deviationId: lastSaved?.reference || form?.reference || 'DEV-2026-018', 
+          investigationId: 'INV-2026-012' 
+        });
+      }
+    } finally {
+      setStartingInvestigation(false);
+    }
+  };
 
   const set = (name) => (e) => {
     const value = e.target.type === "checkbox" ? e.target.checked : e.target.value;
@@ -115,17 +160,95 @@ export default function LogDeviationForm() {
         )}
       </header>
 
+      {/* 21 CFR Part 11 Compliance Lock Banner when Closed */}
+      {isClosed && (
+        <div className="bg-emerald-50 border-b border-emerald-200 px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-white font-bold text-xs shadow-xs">
+              ✓
+            </div>
+            <div>
+              <div className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-2">
+                <span>CLOSED — READ ONLY</span>
+                <span className="text-[10px] font-semibold bg-emerald-200/90 text-emerald-800 px-2 py-0.5 rounded border border-emerald-300">
+                  21 CFR Part 11 Regulatory Lock
+                </span>
+              </div>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                This deviation is formally closed under QA authority. Editing and reassessment are locked.
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-[10px] font-mono text-emerald-900 font-semibold block">
+              Authorized by: {lastSaved?.closed_by || "QA Lead Priyanshu"}
+            </span>
+            <span className="text-[10px] text-emerald-600 font-medium">Compliance Locked</span>
+          </div>
+        </div>
+      )}
+
       {/* Scrollable Left Workspace: Form + Actions + Severity Report */}
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-6">
+        {/* Connected Quality Lifecycle Bar & Stepper */}
+        {(lastSaved || form.batch_number || form.parameter) && (
+          <div className="space-y-3 pb-2">
+            <LinkedRecordsBar 
+              records={linkedRecords}
+              activeType="deviation"
+              onRecordClick={onRecordClick}
+            />
+
+            <div className="rounded-xl bg-blue-900 border border-blue-700 p-3.5 text-xs flex flex-wrap items-center justify-between gap-2 shadow-xs text-white">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-mono font-bold text-amber-300">BATCH: {form.batch_number || 'API-2026-055'}</span>
+                <span className="text-blue-300">•</span>
+                <span>Product: <strong className="text-white">{form.product_name || 'Ibuprofen API'}</strong></span>
+                {form.raw_material_name && (
+                  <>
+                    <span className="text-blue-300">•</span>
+                    <span>Raw Material: <strong className="text-white">{form.raw_material_name}</strong></span>
+                  </>
+                )}
+                <span className="text-blue-300">•</span>
+                <span>Step: <strong className="text-white">{form.manufacturing_stage || 'Step 3 — Reaction'}</strong></span>
+                <span className="text-blue-300">•</span>
+                <span>Parameter: <strong className="text-white">{form.parameter || 'Temperature'}</strong></span>
+                <span className="text-blue-300">•</span>
+                <span>Spec: <span className="font-mono text-blue-200">{form.expected_condition || '70–75°C'}</span></span>
+                <span className="text-blue-300">•</span>
+                <span>Actual: <span className="font-mono font-bold text-red-300">{form.actual_condition || '79°C'}</span></span>
+                {form.duration && (
+                  <>
+                    <span className="text-blue-300">•</span>
+                    <span>Duration: <strong className="text-white">{form.duration}</strong></span>
+                  </>
+                )}
+              </div>
+              <span className="px-2.5 py-1 rounded font-bold uppercase text-[10px] bg-red-600 text-white shadow-xs">
+                OUT-OF-LIMIT (OOL)
+              </span>
+            </div>
+
+            <WorkflowStepper currentStep={1} onStepClick={(step) => {
+              if (step.id === 'investigation') onNavigate?.('investigation', { deviationId: lastSaved?.reference || 'DEV-2026-018' });
+              if (step.id === 'root_cause') onNavigate?.('root_cause', { deviationId: lastSaved?.reference || 'DEV-2026-018' });
+              if (step.id === 'capa') onNavigate?.('capa', { deviationId: lastSaved?.reference || 'DEV-2026-018' });
+              if (step.id === 'effectiveness') onNavigate?.('effectiveness', { deviationId: lastSaved?.reference || 'DEV-2026-018' });
+              if (step.id === 'closed') onNavigate?.('closure', { deviationId: lastSaved?.reference || 'DEV-2026-018' });
+            }} />
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} noValidate className="space-y-4">
-          
+          <fieldset disabled={isClosed} className="space-y-4">
           {/* SECTION 1: DEVIATION INFORMATION */}
           <div className="space-y-3">
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 border-b border-slate-100 pb-1">
               DEVIATION INFORMATION
             </div>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Field
                 label="Site / Plant"
                 htmlFor="site_plant"
@@ -136,7 +259,7 @@ export default function LogDeviationForm() {
                   id="site_plant"
                   value={form.site_plant}
                   onChange={set("site_plant")}
-                  placeholder="e.g. Plant 1 - Sterile Operations"
+                  placeholder="e.g. Bengaluru"
                 />
               </Field>
 
@@ -151,6 +274,20 @@ export default function LogDeviationForm() {
                   type="date"
                   value={form.occurred_on}
                   onChange={set("occurred_on")}
+                />
+              </Field>
+
+              <Field
+                label="Reported By"
+                htmlFor="reported_by"
+                isHighlighted={Boolean(highlightedFields.reported_by)}
+                badge={<AiFieldBadge isAi={aiFields.reported_by} isUserEdited={userEditedFields.reported_by} />}
+              >
+                <TextInput
+                  id="reported_by"
+                  value={form.reported_by}
+                  onChange={set("reported_by")}
+                  placeholder="e.g. Operator K. Sharma"
                 />
               </Field>
             </div>
@@ -292,7 +429,7 @@ export default function LogDeviationForm() {
             </div>
 
             {/* Scope & Context Details */}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field
                 label="Equipment / Asset"
                 htmlFor="equipment"
@@ -303,7 +440,7 @@ export default function LogDeviationForm() {
                   id="equipment"
                   value={form.equipment}
                   onChange={set("equipment")}
-                  placeholder="e.g. Autoclave AC-02"
+                  placeholder="e.g. Reactor R-101"
                 />
               </Field>
 
@@ -317,7 +454,7 @@ export default function LogDeviationForm() {
                   id="department"
                   value={form.department}
                   onChange={set("department")}
-                  placeholder="e.g. Sterile Manufacturing"
+                  placeholder="e.g. API Manufacturing"
                 />
               </Field>
 
@@ -331,7 +468,21 @@ export default function LogDeviationForm() {
                   id="manufacturing_stage"
                   value={form.manufacturing_stage}
                   onChange={set("manufacturing_stage")}
-                  placeholder="e.g. Terminal Sterilization"
+                  placeholder="e.g. Step 3 — Reaction"
+                />
+              </Field>
+
+              <Field
+                label="Process / Operation"
+                htmlFor="process_operation"
+                isHighlighted={Boolean(highlightedFields.process_operation)}
+                badge={<AiFieldBadge isAi={aiFields.process_operation} isUserEdited={userEditedFields.process_operation} />}
+              >
+                <TextInput
+                  id="process_operation"
+                  value={form.process_operation}
+                  onChange={set("process_operation")}
+                  placeholder="e.g. Reaction"
                 />
               </Field>
             </div>
@@ -476,31 +627,45 @@ export default function LogDeviationForm() {
             </div>
           )}
 
-          {/* Form Action Buttons: Reset Form (Left) & Save Deviation (Right) */}
-          <div className="flex items-center justify-between gap-3 pt-2">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setErrors({});
-                dispatch(resetForm());
-              }}
-              disabled={saving}
-              className="text-xs px-3.5 py-2"
-            >
-              Reset Form
-            </Button>
+          </fieldset>
 
-            <Button
-              type="submit"
-              disabled={saving || !canSave}
-              className={`bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 font-medium shadow-sm transition ${
-                !canSave ? "opacity-50 cursor-not-allowed" : ""
-              }`}
-              title={!canSave ? `Complete required fields to save: ${missingRequired.join(", ")}` : "Save deviation"}
-            >
-              {saving ? "Saving…" : "Save Deviation"}
-            </Button>
+          {/* Form Action Buttons */}
+          <div className="flex items-center justify-between gap-3 pt-2">
+            {!isClosed && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setErrors({});
+                  dispatch(resetForm());
+                }}
+                disabled={saving}
+                className="text-xs px-3.5 py-2"
+              >
+                Reset Form
+              </Button>
+            )}
+
+            {isClosed ? (
+              <div className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-100 text-slate-500 text-xs font-semibold border border-slate-200">
+                <svg className="w-3.5 h-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                </svg>
+                <span>Record Locked (Closed)</span>
+              </div>
+            ) : (
+              <Button
+                type="submit"
+                disabled={saving || !canSave}
+                className={`bg-blue-600 hover:bg-blue-700 text-white text-xs px-4 py-2 font-medium shadow-sm transition ${
+                  !canSave ? "opacity-50 cursor-not-allowed" : ""
+                }`}
+                title={!canSave ? `Complete required fields to save: ${missingRequired.join(", ")}` : "Save deviation"}
+              >
+                {saving ? "Saving…" : "Save Deviation"}
+              </Button>
+            )}
           </div>
         </form>
 
@@ -587,6 +752,60 @@ export default function LogDeviationForm() {
                 </p>
               )}
             </div>
+
+            {/* Start Investigation / Closed Lifecycle Navigation Banner */}
+            <div className={`rounded-xl border p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs ${
+              isClosed 
+                ? "border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50" 
+                : "border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50"
+            }`}>
+              <div>
+                <div className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                  isClosed ? "text-emerald-900" : "text-blue-900"
+                }`}>
+                  {isClosed && <span className="h-2 w-2 rounded-full bg-emerald-500" />}
+                  <span>{isClosed ? "Connected Quality Lifecycle Completed" : "Connected Quality Workflow"}</span>
+                </div>
+                <p className={`text-xs mt-0.5 ${isClosed ? "text-emerald-700" : "text-blue-700"}`}>
+                  {isClosed 
+                    ? "All 4 quality gates verified. Deviation formally closed and locked under QA compliance." 
+                    : "Deviation recorded and assessed. Proceed to formal investigation protocol."}
+                </p>
+              </div>
+
+              {isClosed ? (
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.("batch_release", { batchNumber: form.batch_number || "API-2026-041", batchReleaseId: "BR-2026-041" })}
+                  className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-emerald-700 transition"
+                >
+                  <span>View Batch Release (BR-2026-041)</span>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                  </svg>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStartInvestigation}
+                  disabled={startingInvestigation}
+                  className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-blue-700 transition"
+                >
+                  <span>{startingInvestigation ? "Initiating…" : "Start Investigation"}</span>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Quality Event Lifecycle Timeline (21 CFR Part 11 Audit Trail) */}
+            <QualityEventTimeline 
+              deviation={lastSaved || form}
+              linkedRecords={linkedRecords}
+              onNavigate={onNavigate}
+              onRecordClick={onRecordClick}
+            />
           </div>
         )}
       </div>

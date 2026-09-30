@@ -1,9 +1,10 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
+from typing import List, Optional
 
-from sqlalchemy import Date, Enum as SAEnum, String, Text
+from sqlalchemy import Date, DateTime, Enum as SAEnum, ForeignKey, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
 from app.core.enums import (
@@ -97,6 +98,25 @@ class Deviation(Base, TimestampMixin):
     # --- AI snapshots (audit of what the assistant proposed) ---
     ai_extraction: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
     ai_assessment: Mapped[dict | None] = mapped_column(JSONVariant, nullable=True)
+
+    # --- Connected QMS Workflow Relationships ---
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("batches.id", ondelete="SET NULL"), nullable=True, index=True)
+    manufacturing_step_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("manufacturing_steps.id", ondelete="SET NULL"), nullable=True, index=True)
+    in_process_check_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("in_process_checks.id", use_alter=True, name="fk_deviations_in_process_check_id", ondelete="SET NULL"), nullable=True, index=True)
+    workflow_status: Mapped[Optional[str]] = mapped_column(String(48), default="reported", nullable=True, index=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_by: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    closure_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    closure_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    effectiveness_result: Mapped[Optional[str]] = mapped_column(String(48), nullable=True)
+
+    # Relationships
+    batch: Mapped[Optional["Batch"]] = relationship("Batch", back_populates="deviations", foreign_keys=[batch_id])
+    manufacturing_step: Mapped[Optional["ManufacturingStep"]] = relationship("ManufacturingStep", foreign_keys=[manufacturing_step_id])
+    in_process_check: Mapped[Optional["InProcessCheck"]] = relationship("InProcessCheck", foreign_keys=[in_process_check_id])
+    investigation: Mapped[Optional["Investigation"]] = relationship("Investigation", back_populates="deviation", uselist=False)
+    capas: Mapped[List["Capa"]] = relationship("Capa", back_populates="deviation")
+    complaints: Mapped[List["Complaint"]] = relationship("Complaint", back_populates="deviation")
 
     # --- AIVOA Aliases for property access ---
     @property

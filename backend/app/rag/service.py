@@ -8,7 +8,6 @@ from typing import Any
 from app.core.exceptions import EmbeddingGenerationError
 from app.core.logging import get_logger
 from app.rag.embeddings import (
-    EMBEDDING_DIM,
     HF_EMBEDDING_MODEL,
     _deterministic_dense_projection,
     embed_huggingface,

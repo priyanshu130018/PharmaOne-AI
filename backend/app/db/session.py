@@ -20,12 +20,28 @@ def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
         settings = get_settings()
-        _engine = create_async_engine(
-            settings.DATABASE_URL,
-            echo=False,
-            pool_pre_ping=True,
-            future=True,
-        )
+        is_sqlite = "sqlite" in str(settings.DATABASE_URL)
+        if is_sqlite:
+            _engine = create_async_engine(
+                settings.DATABASE_URL,
+                echo=False,
+                future=True,
+            )
+        else:
+            _engine = create_async_engine(
+                settings.DATABASE_URL,
+                echo=False,
+                pool_pre_ping=True,
+                future=True,
+                pool_recycle=60,
+                pool_size=10,
+                max_overflow=15,
+                connect_args={
+                    "prepared_statement_cache_size": 0,
+                    "statement_cache_size": 0,
+                    "command_timeout": 30,
+                },
+            )
     return _engine
 
 

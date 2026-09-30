@@ -36,6 +36,7 @@ import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
+from sqlalchemy import text
 from app.db.session import dispose_engine, get_engine, get_sessionmaker  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base, Company, CompanyMembership, Profile, Site  # noqa: E402
@@ -46,22 +47,24 @@ async def _prepare_database():
     """Create a fresh schema for each test, seed default demo organizations, then tear it down."""
     engine = get_engine()
     async with engine.begin() as conn:
+        if engine.dialect.name == "sqlite":
+            await conn.execute(text("PRAGMA foreign_keys = OFF;"))
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+        if engine.dialect.name == "sqlite":
+            await conn.execute(text("PRAGMA foreign_keys = ON;"))
 
     # Seed test users and organizations
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as db:
         c1 = Company(id=uuid.uuid4(), name="Vasundha Pharma Chem Limited", status="active")
         c2 = Company(id=uuid.uuid4(), name="Competitor Pharma Limited", status="active")
-        c_adm = Company(id=uuid.uuid4(), name="PharmaOne Global Systems", status="active")
-        db.add_all([c1, c2, c_adm])
+        db.add_all([c1, c2])
         await db.flush()
 
         s1 = Site(id=uuid.uuid4(), company_id=c1.id, name="Demo Manufacturing Site", status="active")
         s2 = Site(id=uuid.uuid4(), company_id=c2.id, name="Plant 1", status="active")
-        s_adm = Site(id=uuid.uuid4(), company_id=c_adm.id, name="Headquarters", status="active")
-        db.add_all([s1, s2, s_adm])
+        db.add_all([s1, s2])
         await db.flush()
 
         p_priyanshu = Profile(
@@ -82,22 +85,13 @@ async def _prepare_database():
             job_title="Production User",
             status="active",
         )
-        p_admin = Profile(
-            id=uuid.uuid4(),
-            email="admin@pharmaone.ai",
-            full_name="System Administrator",
-            employee_id="ADMIN-001",
-            department="Compliance",
-            job_title="Lead Admin",
-            status="active",
-        )
         p_inactive = Profile(
             id=uuid.uuid4(),
             email="inactive@pharmaone.ai",
             full_name="Inactive User",
             status="inactive",
         )
-        db.add_all([p_priyanshu, p_isolated, p_admin, p_inactive])
+        db.add_all([p_priyanshu, p_isolated, p_inactive])
         await db.flush()
 
         m_priyanshu = CompanyMembership(
@@ -116,15 +110,7 @@ async def _prepare_database():
             role="Production User",
             is_active=True,
         )
-        m_admin = CompanyMembership(
-            id=uuid.uuid4(),
-            user_id=p_admin.id,
-            company_id=c_adm.id,
-            site_id=s_adm.id,
-            role="Admin",
-            is_active=True,
-        )
-        db.add_all([m_priyanshu, m_isolated, m_admin])
+        db.add_all([m_priyanshu, m_isolated])
         await db.commit()
 
     yield
@@ -166,8 +152,6 @@ async def isolated_client() -> AsyncClient:
         headers={"Authorization": "Bearer test-token-isolated"},
     ) as ac:
         yield ac
-
-
 
 
 @pytest_asyncio.fixture

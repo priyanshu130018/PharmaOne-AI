@@ -10,7 +10,6 @@ Provides backend-only management of the private `knowledge-base` bucket:
 from __future__ import annotations
 
 import mimetypes
-from typing import Any
 
 from supabase import Client, create_client
 

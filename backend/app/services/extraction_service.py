@@ -11,9 +11,7 @@ Enforces strict file type validation, size limits, and safe cleanup of temporary
 
 from __future__ import annotations
 
-import os
 import re
-import tempfile
 from pathlib import Path
 
 from fastapi import UploadFile
@@ -147,27 +145,9 @@ class ExtractionService:
         file_bytes, filename = await self._read_file_safe(file)
         ext = Path(filename).suffix.lower()
 
-        # Ephemeral processing in a temporary file (guaranteed cleanup)
-        temp_dir = tempfile.mkdtemp(prefix="pharmaone_upload_")
-        temp_file_path = os.path.join(temp_dir, "document" + ext)
-        try:
-            with open(temp_file_path, "wb") as f:
-                f.write(file_bytes)
-
-            if ext == ".pdf":
-                return self._extract_from_pdf(file_bytes, filename)
-            else:
-                return self._extract_from_plain_text(file_bytes, filename)
-
-        finally:
-            # Immediate cleanup of temporary data (Security requirement)
-            try:
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-                if os.path.exists(temp_dir):
-                    os.rmdir(temp_dir)
-            except OSError as cleanup_err:
-                logger.warning("Failed to clean up temporary upload directory: %s", cleanup_err)
+        if ext == ".pdf":
+            return self._extract_from_pdf(file_bytes, filename)
+        return self._extract_from_plain_text(file_bytes, filename)
 
     # --------------------------------------------------------------------------
     # PDF Extraction & OCR Fallback

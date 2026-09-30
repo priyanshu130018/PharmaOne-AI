@@ -6,9 +6,16 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     image: pharmaone-backend:latest
+    container_name: pharmaone-backend
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - RUNNING_IN_DOCKER=true
+      - BACKEND_PORT=${BACKEND_PORT:-8000}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - API_BASE_URL=${API_BASE_URL:-http://localhost:8000}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8080,http://localhost:5173}
     ports:
       - "${BACKEND_PORT:-8000}:${BACKEND_PORT:-8000}"
     healthcheck:
@@ -19,8 +26,8 @@ services:
         - "import os,urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/api/v1/health' % os.environ.get('BACKEND_PORT', '8000'), timeout=4).status==200 else 1)"
       interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 10s
+      retries: 5
+      start_period: 90s
 
   frontend:
     build:
@@ -29,6 +36,7 @@ services:
       args:
         VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://localhost:8000/api/v1}"
     image: pharmaone-frontend:latest
+    container_name: pharmaone-frontend
     restart: unless-stopped
     environment:
       FRONTEND_PORT: "${FRONTEND_PORT:-8080}"
@@ -41,7 +49,7 @@ services:
       test:
         - "CMD-SHELL"
         - "wget -qO- http://127.0.0.1:${FRONTEND_PORT:-8080}/ >/dev/null 2>&1 || exit 1"
-      interval: 15s
+      interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s

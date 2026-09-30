@@ -10,11 +10,12 @@ from app.core.enums import (
     DeviationType,
     Severity,
 )
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.models.deviation import Deviation
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.deviation_repository import DeviationRepository
 from app.schemas.deviation import DeviationCreate, DeviationUpdate
+from app.schemas.qms import DeviationSeverityConfirm
 
 
 class DeviationService:
@@ -57,6 +58,21 @@ class DeviationService:
             if not data.get("reported_by"):
                 data["reported_by"] = user.full_name
 
+        # Auto-link batch_id from batch_number if provided and not explicitly set
+        if not data.get("batch_id") and data.get("batch_number"):
+            try:
+                from app.models.qms import Batch
+                from sqlalchemy import select
+                b_num = str(data["batch_number"]).strip()
+                res_b = await self.session.execute(
+                    select(Batch).where(Batch.batch_number == b_num, Batch.company_id == data.get("company_id"))
+                )
+                found_b = res_b.scalar_one_or_none()
+                if found_b:
+                    data["batch_id"] = found_b.id
+            except Exception:
+                pass
+
         # Only pass columns that exist on the Deviation model
         valid_cols = {col.name for col in Deviation.__table__.columns}
         filtered_data = {k: v for k, v in data.items() if k in valid_cols}
@@ -74,7 +90,12 @@ class DeviationService:
             entity_id=deviation.id,
             user_id=user.user_id if user else None,
             company_id=deviation.company_id,
-            meta={"reference": deviation.reference, "had_ai": payload.ai_assessment is not None},
+            meta={
+                "reference": deviation.reference,
+                "batch_number": deviation.batch_number,
+                "severity": str(deviation.severity.value if hasattr(deviation.severity, "value") else deviation.severity),
+                "had_ai": payload.ai_assessment is not None,
+            },
         )
         return deviation
 
@@ -112,6 +133,8 @@ class DeviationService:
         user: Optional[AuthenticatedUser] = None,
     ) -> Deviation:
         deviation = await self.get(deviation_id, company_id=user.company_id if user else None)
+        if deviation.status == DeviationStatus.CLOSED:
+            raise ValidationError("Cannot modify closed deviation.")
         updates = payload.model_dump(exclude_unset=True)
         # Prevent tenant hijacking
         updates.pop("company_id", None)
@@ -136,3 +159,46 @@ class DeviationService:
 
     async def summary(self, company_id: Optional[UUID] = None) -> dict:
         return await self.repository.summary(company_id=company_id)
+
+    async def confirm_severity(
+        self,
+        deviation_id: UUID,
+        payload: DeviationSeverityConfirm,
+        user: Optional[AuthenticatedUser] = None,
+    ) -> Deviation:
+        deviation = await self.get(deviation_id, company_id=user.company_id if user else None)
+        if deviation.status == DeviationStatus.CLOSED:
+            raise ValidationError("Cannot modify closed deviation.")
+
+        if payload.severity:
+            try:
+                deviation.severity = Severity(payload.severity.lower())
+            except Exception:
+                deviation.severity = payload.severity
+
+        if payload.decision.lower() in ["accept", "edit"]:
+            deviation.workflow_status = "investigation"
+
+        if payload.impact:
+            deviation.immediate_containment = f"{deviation.immediate_containment or ''}\nConfirmed Impact: {payload.impact}".strip()
+
+        await self.session.flush()
+        await self.session.refresh(deviation)
+
+        await self.audit.record(
+            action=AuditAction.SEVERITY_CONFIRMED,
+            entity_type="deviation",
+            entity_id=deviation.id,
+            user_id=user.user_id if user else None,
+            company_id=deviation.company_id,
+            meta={
+                "reference": deviation.reference,
+                "batch_number": deviation.batch_number or "N/A",
+                "severity": str(deviation.severity.value if hasattr(deviation.severity, "value") else deviation.severity),
+                "decision": payload.decision,
+                "impact": payload.impact,
+                "notes": payload.notes,
+                "confirmed_by": user.full_name if user else payload.confirmed_by,
+            },
+        )
+        return deviation

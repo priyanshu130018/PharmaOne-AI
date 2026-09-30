@@ -25,6 +25,18 @@ class RetrievedChunk(TypedDict):
 
 _PHARMA_KNOWLEDGE_BASE = [
     {
+        "document_name": "SOP-014 v3.2: Chemical Synthesis & Reactor Temperature Control",
+        "chunk_id": "SOP-014-C1",
+        "section": "Section 3.2 - Reaction Parameter Limits for Paracetamol API",
+        "page_or_chunk": "Page 2, Chunk 1",
+        "content": (
+            "Approved temperature range is 76–80 °C for Step 3 (Reaction) of Paracetamol API synthesis. "
+            "Any excursion above 80 °C (e.g. 84 °C) increases risk of degradation, formation of 4-aminophenol "
+            "impurities, and acetic acid byproducts. Automatic cooling response must engage within 3 minutes. "
+            "Valve actuator calibration and preventive maintenance controls must be strictly maintained."
+        ),
+    },
+    {
         "document_name": "SOP-QA-042: Environmental Monitoring & Cleanroom Control",
         "chunk_id": "SOP-QA-042-C1",
         "section": "Section 4.1 - Critical Particle and Microbial Action Limits",

@@ -13,6 +13,7 @@ const OPTIONAL_TEXT_FIELDS = [
   "product_code",
   "batch_number",
   "manufacturing_stage",
+  "process_operation",
   "equipment",
   "expected_condition",
   "actual_condition",
@@ -20,6 +21,9 @@ const OPTIONAL_TEXT_FIELDS = [
   "parameter",
   "immediate_action",
   "assessment_reason",
+  "batch_id",
+  "manufacturing_step_id",
+  "in_process_check_id",
 ];
 
 const OPTIONAL_ENUM_FIELDS = ["batch_status", "impact", "severity"];

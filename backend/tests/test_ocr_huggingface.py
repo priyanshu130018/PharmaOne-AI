@@ -10,7 +10,7 @@ Validates all compliance requirements:
 - invalid HF response
 - missing HUGGINGFACE_API_KEY
 - production environment configuration
-- no Tesseract/Poppler dependency or import remains
+- absence of local binary OCR dependencies
 """
 
 from __future__ import annotations
@@ -49,12 +49,12 @@ def _create_image_pdf(text: str = "Batch B-9988: Temperature excursion to 84C") 
 
 
 # ------------------------------------------------------------------------------
-# 1. No Tesseract / Poppler Remains
+# 1. Zero External Binary OCR Dependencies
 # ------------------------------------------------------------------------------
 
 
-def test_no_tesseract_or_poppler_in_settings_or_modules():
-    """Verify Tesseract and Poppler are completely absent from Settings, requirements, and application code."""
+def test_zero_external_binary_dependencies():
+    """Verify external binary OCR utilities and wrappers are absent from Settings, requirements, and application code."""
     settings = Settings(
         ENVIRONMENT="production",
         BACKEND_PORT=8000,

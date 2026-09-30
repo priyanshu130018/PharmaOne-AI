@@ -204,74 +204,165 @@ All configuration is strictly environment-driven. The application fails fast at 
 
 ---
 
-## Cloud Deployment Instructions (Docker Compose)
+## Local & Cloud Startup with Docker (Using Existing Supabase Database)
 
-Deploy directly on any cloud virtual machine (Ubuntu, Debian, AWS EC2, GCP Compute Engine, Azure VM, DigitalOcean):
+PharmaOne-AI connects directly to your existing **Supabase PostgreSQL** cloud database.
+The Docker Compose architecture strictly containerizes only the application services:
+- **`backend`**: FastAPI application service (Python 3.12, LangGraph, asyncpg connection to Supabase pooler)
+- **`frontend`**: React 18 + Vite SPA served via Nginx (port 8080)
 
-### 1. Prerequisites on Cloud Server
+> [!IMPORTANT]
+> **No Local Database Containers**: Docker Compose does **not** spin up a local PostgreSQL container, pgvector container, or SQLite database. All data, migrations, and canonical QMS records are stored directly in your existing Supabase project. Docker startup does **not** reinitialize or overwrite your database.
+
+### 1. Prerequisites
+- Docker Engine 24+ and Docker Compose v2+ (`docker --version`, `docker compose version`)
+- Access credentials to your existing Supabase project:
+  - `DATABASE_URL` (Supabase transaction pooler URL, async driver `postgresql+asyncpg://`)
+  - `SUPABASE_URL` (`https://<project-ref>.supabase.co`)
+  - `SUPABASE_SERVICE_ROLE_KEY`
+- (Optional) AI API keys for live AI generation (`GROQ_API_KEY`, `HUGGINGFACE_API_KEY`)
+
+### 2. Configure Environment Variables
+Copy `.env.example` to `.env` and fill in your existing Supabase project credentials:
+
 ```bash
-# Verify Docker and Docker Compose plugin are installed
-docker --version
-docker compose version
-```
-
-### 2. Clone Repository & Configure Environment
-```bash
-git clone https://github.com/priyanshu130018/PharmaOne-AI.git
-cd PharmaOne-AI
-
-# Create production .env file from template
+# On Linux/macOS
 cp .env.example .env
 
-# Edit .env with your cloud Supabase database URL, Groq key, and server ports
-nano .env
+# On Windows PowerShell
+Copy-Item .env.example .env
 ```
 
-### 3. Build & Launch Containers
-```bash
-# Build Docker images cleanly
-docker compose build
+Ensure your `.env` contains:
+```env
+ENVIRONMENT=production
+BACKEND_PORT=8000
+FRONTEND_PORT=8080
+API_BASE_URL=http://localhost:8000
+CORS_ORIGINS=http://localhost:8080,http://localhost:5173
 
-# Start containers in detached mode
-docker compose up -d
+# Existing Supabase PostgreSQL Connection (Asyncpg pooler)
+DATABASE_URL=postgresql+asyncpg://postgres.<project-ref>:<db-password>@aws-0-<region>.pooler.supabase.com:5432/postgres
+
+# Existing Supabase Project & Auth Keys
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Optional AI Providers (Groq & Hugging Face)
+GROQ_API_KEY=gsk_...
+GROQ_MODEL=openai/gpt-oss-20b
+HUGGINGFACE_API_KEY=hf_...
+
+# Frontend API Target
+VITE_API_BASE_URL=http://localhost:8000/api/v1
 ```
 
-### 4. Apply Database Migrations
+> [!WARNING]
+> Never commit `.env` to Git. Real Supabase keys and credentials must remain secret.
+
+### 3. Build & Run Application
+Start the containerized stack:
+
 ```bash
-# Run Alembic migrations against cloud PostgreSQL/Supabase
-docker compose exec backend alembic upgrade head
+docker compose up --build
+```
+Or run in detached mode:
+```bash
+docker compose up --build -d
 ```
 
-### 5. Verify Container Health & Connectivity
+### 4. Confirm Service Health & Connectivity
+Check that both containers are running and healthy:
 ```bash
-# Check container status (both should report healthy)
 docker compose ps
-
-# Test Backend Health endpoint (returns HTTP 200)
-curl -i http://localhost:8000/health
-
-# Test Database Readiness probe (verifies live PostgreSQL connectivity)
-curl -i http://localhost:8000/api/v1/health/ready
-
-# Inspect production container logs
-docker compose logs -f --tail=100 backend
 ```
 
-Access the web interface at `http://<YOUR_SERVER_IP>:8080`.
+Verify service endpoints:
+- **Frontend SPA**: [http://localhost:8080](http://localhost:8080)
+- **FastAPI Backend Liveness**: [http://localhost:8000/health](http://localhost:8000/health) (returns `{"status":"ok"}`)
+- **Supabase Cloud DB Readiness**: [http://localhost:8000/api/v1/health/ready](http://localhost:8000/api/v1/health/ready) (returns `{"database":"connected"}`)
+- **Interactive OpenAPI Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+### 5. Automated Verification of Supabase Data & QMS Workflow
+Run the end-to-end verification script against the running Docker stack:
+
+```bash
+# Verify connectivity, auth, canonical records, and frontend assets
+python backend/scripts/verify_docker_qms.py
+
+# Verify the full QMS lifecycle workflow (Deviation -> Investigation -> Root Cause -> CAPA -> Effectiveness -> Closure)
+python backend/scripts/test_lifecycle_docker.py
+```
+
+All existing canonical PharmaOne-AI records in Supabase are verified:
+- **Deviation**: `DEV-2026-018`
+- **Investigation**: `INV-2026-012`
+- **Root Cause Analysis (5 Whys / Ishikawa)**: `RCA-2026-012`
+- **CAPA**: `CAPA-2026-009`
+- **Effectiveness Check**: `EFF-2026-009`
+- **Batches**: `API-2026-041` through `API-2026-046`
+- **Batch Release**: `BR-2026-041`
+- **Customer Complaint**: `COM-2026-003`
+- **Supplier & Raw Material**: `RM-2026-001` / ChemCorp
+
+Because all data resides in your cloud Supabase database, any updates made through the UI or API persist permanently across Docker restarts without data loss.
+
 
 ---
 
-## Application Modules & User Experience
+## Connected QMS Workflow & Application Modules
 
 PharmaOne AI provides an enterprise pharmaceutical quality management interface adhering to FDA 21 CFR Part 11 and EU GMP Annex 11 principles.
 
-### Global Navigation Bar
-The top navigation bar provides unified routing across the QMS platform:
-- **`Dashboard` (`/dashboard`)**: Functional live operational overview.
-- **`Deviations` (`/deviations`)**: Functional AI-powered deviation intake workspace.
-- **`CAPAs`**, **`Change Control`**, **`Audits`**, **`Documents`**, **`Reports`**: Enterprise placeholder modules cleanly designated as coming soon without dead-end routes.
+### The Pharmaceutical Quality Mental Model
 
-The active navigation item is visually highlighted, and browser URL changes are synchronized via HTML5 history state.
+```text
+RAW MATERIAL (Supplier: ChemCorp)
+    ↓
+CREATE BATCH (API-2026-041 / API-2026-047)
+    ↓
+MANUFACTURING (Steps 1–4 Execution)
+    ↓
+IN-PROCESS CHECK (IPC: Temp 84 °C vs 76–80 °C)
+    ↓
+OUT-OF-LIMIT (OOL) / PROCESS EXCURSION DETECTED
+    ↓
+DEVIATION (DEV-2026-018: AI Extraction & Risk Assessment)
+    ↓
+SEVERITY & IMPACT (AI Advisory + QA Human Confirmation)
+    ↓
+INVESTIGATION (INV-2026-012: Advisory Plan & Action Tasks)
+    ↓
+ROOT CAUSE (RCA-2026-012: 5 Whys Analysis)
+    ↓
+CAPA (CAPA-2026-009: Corrective + Preventive Actions)
+    ↓
+VERIFICATION / EFFECTIVENESS (EFF-2026-009: 5 Monitored Batches)
+    ↓
+ISSUE RESOLVED?
+    ├── NO  → Quality Loop: Return to Investigation → RCA → CAPA → Verify Again
+    │
+    └── YES
+          ↓
+       DEVIATION CLOSED (5 Quality Gates Validated & 21 CFR Part 11 Locked)
+          ↓
+       BATCH RELEASE (BR-2026-041: QA Disposition Decision)
+          ↓
+       AUDIT TRAIL (Live Cryptographically Traceable Event Log)
+```
+
+### Simplified 8-Item Primary Navbar
+The global header provides clean, equally spaced direct navigation across all major QMS workflows:
+1. **`Dashboard` (`/dashboard`)**: Operational quality intelligence, active metrics, and quick actions.
+2. **`Manufacturing` (`/batches`)**: Scalable Batches table (100+ batches support), "+ Create Batch" modal, raw materials, manufacturing steps, and IPC controls.
+3. **`Deviations` (`/deviations`)**: Two-column AI-powered deviation intake workspace with Groq LLM assistant and vector RAG.
+4. **`Investigation` (`/investigation`)**: Action tasks, evidence logs, root cause analysis (5 Whys), and SOP references.
+5. **`CAPA` (`/capa`)**: Corrective and preventive actions with AI suggestions and 5-batch effectiveness verification.
+6. **`Batch Release` (`/batch_release`)**: Analytical release checklist (Assay, Related Substances, Water Content) and final QA disposition.
+7. **`Audit Trail` (`/audit_trail`)**: Live, immutable, tamper-evident 21 CFR Part 11 event history with batch filtering.
+8. **`Complaints` (`/complaints`)**: Customer complaints and post-market vigilance tracking.
+
+*(Supplier information is integrated contextually inside Raw Materials and Batch contexts, rather than occupying a standalone primary workflow).*
 
 ### 1. Operational Dashboard (`/dashboard`)
 The Dashboard delivers a company-tenant-scoped real-time quality overview powered strictly by live database figures via `GET /api/v1/reports/summary` and `GET /api/v1/deviations`:
@@ -288,12 +379,17 @@ The Dashboard delivers a company-tenant-scoped real-time quality overview powere
 
 ### 2. AI-Powered Deviation Intake (`/deviations`)
 A balanced two-column workspace faithfully aligned with pharmaceutical workflow standards:
-- **Left Panel (Log Deviation Form)**: Complete form containing Title, Description, Date/Time Occurred, Deviation Type, Immediate Action, Root Cause, Impact Assessment, and Severity Rating.
-- **Right Panel (AI Deviation Assistant)**:
-  - Document & Text Ingestion (PDF upload with automatic optical character recognition for scanned records, or direct text/email pasting).
-  - One-click **Analyze with AI Assistant** running LangGraph workflow, Groq LLM extraction, and BGE-small Vector RAG retrieval.
-  - Interactive multi-turn AI Assistant chat at the bottom of the panel for real-time risk assessment inquiries, procedural clarifications, and evidence checks.
-  - **Human Review & Non-Overwrite Authority**: Reviewers can edit any AI suggestion; modified fields retain priority and are tagged with `Modified` badges, while pristine suggestions display `AI extracted`.
+- **Left Panel (Log Deviation Workspace & Severity Report)**:
+  - Authoritative **Log Deviation** form containing all standard identification, product, parameter, and assessment fields.
+  - Interactive user editing with full non-overwrite protection (`userEditedFields`).
+  - Real-time green visual highlighting (`bg-emerald-50/90`, border, ring) and `AI updated` indicators on fields modified via chatbot commands.
+  - Form actions: `Reset Form` and `Save Deviation`.
+  - Comprehensive **Deviation Severity Report** (AI Risk Assessment, Impact, Severity, Reason, Evidence) displayed on the left post-submission.
+- **Right Panel (AI Deviation Assistant Chatbot)**:
+  - Dedicated conversational AI assistant interface.
+  - Document ingestion via integrated composer paperclip (`📎`) supporting PDF upload with automated OCR fallback for scanned records, or natural language prompts.
+  - Context-aware multi-turn dialog powered by Groq LLM and vector RAG citations.
+  - Natural language form updates with structured confirmation audits (`✓ Change applied` / `✓ N changes applied`).
 
 ---
 
@@ -438,16 +534,16 @@ When the user clicks **Save Deviation** (`POST /api/v1/deviations`):
 
 The entire repository is covered by automated unit, integration, and cloud-reliability test suites:
 
-- **Backend**: **98 automated tests** (100% passing across 11 test modules) covering REST endpoints, CORS headers, extraction pipeline, Hugging Face OCR, BGE-small vector embeddings, Supabase Storage ingestion, pgvector similarity search, LangGraph deviation intake workflow, Supabase Auth token validation, RBAC enforcement, and tenant company isolation.
-- **Frontend**: **25 automated tests** (100% passing across 5 component, Redux store, Dashboard, and Auth routing suites) verifying UI state management, non-overwriting badge tracking, intake forms, assistant interaction, Dashboard metrics, single Priyanshu demo login, and routing flows.
-- **Total**: **123 automated tests** (100% passing).
+- **Backend**: **108 automated tests** (100% passing across 12 test modules) covering REST endpoints, CORS headers, extraction pipeline, Hugging Face OCR, BGE-small vector embeddings, Supabase Storage ingestion, pgvector similarity search, LangGraph deviation intake workflow, Supabase Auth token validation, RBAC enforcement, context-aware chatbot updates, and tenant company isolation.
+- **Frontend**: **35 automated tests** (100% passing across 5 component, Redux store, Dashboard, and Auth routing suites) verifying UI state management, non-overwriting badge tracking, green changed-field highlighting, intake forms, assistant interaction, Dashboard metrics, single Priyanshu demo login, and routing flows.
+- **Total**: **143 automated tests** (100% passing).
 
 ```bash
-# Run backend test suite (98 tests across all modules)
+# Run backend test suite (108 tests across all modules)
 cd backend
 pytest -v
 
-# Run frontend test suite (25 tests across components, Redux slices, and auth routing)
+# Run frontend test suite (35 tests across components, Redux slices, and auth routing)
 cd ../frontend
 npm test
 
@@ -459,6 +555,6 @@ npm run build
 
 ## Known Limitations
 
-1. **OCR & Embeddings**: Scanned documents and dense embeddings are processed via Hugging Face Serverless Inference API (`BAAI/bge-small-en-v1.5`), subject to API key configuration. Neither Tesseract nor local binary dependencies are used.
+1. **OCR & Embeddings**: Scanned documents and dense embeddings are processed via Hugging Face Serverless Inference API (`BAAI/bge-small-en-v1.5`), subject to API key configuration, without requiring local heavy binary or model dependencies.
 2. **Live External AI Credentials**: Live Groq LLM calls and Supabase persistence require active API keys configured in `.env`. In offline or test environments, the built-in heuristic extractor and isolated deterministic projection ensure 100% test resilience without crashing.
 

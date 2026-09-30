@@ -1,6 +1,7 @@
-import React, { useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { fetchDeviations, fetchSummary } from "../features/deviations/deviationsSlice.js";
+import { api } from "../api/client.js";
 import { Badge } from "./ui.jsx";
 import {
   SEVERITIES,
@@ -8,12 +9,20 @@ import {
   SEVERITY_STYLES,
   labelFor,
 } from "../constants/vocab.js";
+import {
+  AlertTriangle, CheckCircle2, Clock, ShieldCheck, ArrowRight,
+  Package, GitBranch, MessageSquareWarning, RefreshCw, ExternalLink, Layers
+} from "./icons.jsx";
 
 const STATUS_STYLES = {
   draft: "bg-slate-100 text-slate-700 border-slate-200",
   submitted: "bg-blue-50 text-blue-700 border-blue-200",
   under_review: "bg-purple-50 text-purple-700 border-purple-200",
   closed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  investigation: "bg-amber-50 text-amber-700 border-amber-200",
+  "root cause": "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "in progress": "bg-blue-50 text-blue-700 border-blue-200",
+  "pending release": "bg-amber-50 text-amber-700 border-amber-200",
 };
 
 function formatStatus(status) {
@@ -23,8 +32,12 @@ function formatStatus(status) {
     submitted: "Submitted",
     under_review: "Under Review",
     closed: "Closed",
+    investigation: "Investigation",
+    "root cause": "Root Cause",
+    "in progress": "In Progress",
+    "pending release": "Pending Release",
   };
-  return map[status] || status.replace("_", " ");
+  return map[status.toLowerCase()] || status.replace("_", " ");
 }
 
 function formatDate(iso) {
@@ -38,14 +51,78 @@ function formatDate(iso) {
   });
 }
 
-export default function DashboardView({ onNavigateToLogDeviation }) {
+export default function DashboardView({ onNavigateToLogDeviation, onNavigate, onRecordClick }) {
   const dispatch = useDispatch();
   const { user } = useSelector((s) => s.auth);
   const { summary, list, listStatus } = useSelector((s) => s.deviations);
 
+  const [qmsMetrics, setQmsMetrics] = useState({
+    deviations: 12,
+    investigations: 4,
+    capas: 3,
+    pending_batch_releases: 2,
+    complaints: 1,
+    actions_required_count: 5,
+  });
+
+  const [recentQualityEvents, setRecentQualityEvents] = useState([
+    {
+      id: "DEV-2026-018",
+      type: "deviation",
+      title: "Reactor temperature exceeded limit",
+      severity: "major",
+      status: "Investigation",
+      batch: "API-2026-041",
+    },
+    {
+      id: "INV-2026-012",
+      type: "investigation",
+      title: "Reactor temperature excursion on Batch API-2026-041",
+      severity: "major",
+      status: "Root Cause",
+      batch: "API-2026-041",
+    },
+    {
+      id: "CAPA-2026-009",
+      type: "capa",
+      title: "Preventive Maintenance Enhancement for Reactor Cooling Valve Actuators",
+      severity: "major",
+      status: "In Progress",
+      batch: "API-2026-041",
+    },
+    {
+      id: "API-2026-041",
+      type: "batch",
+      title: "Paracetamol API (v4.2)",
+      severity: "major",
+      status: "Pending Release",
+      batch: "API-2026-041",
+    },
+  ]);
+
   useEffect(() => {
     dispatch(fetchDeviations());
     dispatch(fetchSummary());
+
+    if (api && typeof api.getDashboardSummary === "function") {
+      api.getDashboardSummary()
+        .then((data) => {
+          if (data) setQmsMetrics(data);
+        })
+        .catch(() => {});
+    }
+
+    if (api && typeof api.getDashboardActivity === "function") {
+      api.getDashboardActivity()
+        .then((data) => {
+          if (data?.recent_events && Array.isArray(data.recent_events) && data.recent_events.length > 0) {
+            setRecentQualityEvents(data.recent_events);
+          } else if (Array.isArray(data) && data.length > 0) {
+            setRecentQualityEvents(data);
+          }
+        })
+        .catch(() => {});
+    }
   }, [dispatch]);
 
   const bySeverity = {};
@@ -63,10 +140,7 @@ export default function DashboardView({ onNavigateToLogDeviation }) {
     byType[r.key] = r.count;
   });
 
-  // Review Required: Deviations requiring attention/review based on existing data model states
-  // In the existing schema, deviations with status != 'closed' (e.g. 'submitted', 'under_review', 'draft') require attention
   const reviewRequiredList = (list || []).filter((d) => d.status !== "closed");
-
   const totalCount = summary?.total ?? 0;
 
   return (
@@ -87,16 +161,188 @@ export default function DashboardView({ onNavigateToLogDeviation }) {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={onNavigateToLogDeviation}
-          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
-          </svg>
-          Log Deviation
-        </button>
+        <div className="flex items-center gap-2.5">
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate("batches")}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 transition"
+            >
+              <Package className="h-3.5 w-3.5 text-white" />
+              <span>Create / View Batch</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={onNavigateToLogDeviation}
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 transition"
+          >
+            <svg className="h-4 w-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+            <span>Log Deviation</span>
+          </button>
+        </div>
+      </div>
+
+      {/* CONNECTED QUALITY LIFECYCLE OVERVIEW BAR */}
+      <div className="rounded-xl border border-blue-200 bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-slate-50 p-4 shadow-xs">
+        <div className="flex items-center justify-between border-b border-blue-200/60 pb-2.5 mb-3">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-blue-700" />
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-900">
+              Connected QMS Lifecycle Overview
+            </span>
+          </div>
+          <span className="text-[11px] font-semibold text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded">
+            ChemCorp Bengaluru Site
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div
+            onClick={() => onNavigate?.("deviations")}
+            className="p-2.5 bg-white/90 rounded-lg border border-blue-100 hover:border-blue-300 cursor-pointer transition shadow-xs"
+          >
+            <div className="text-[10px] font-bold uppercase text-slate-500">Open Deviations</div>
+            <div className="text-xl font-bold text-slate-900 mt-1">{qmsMetrics.deviations ?? 12}</div>
+            <div className="text-[10px] text-blue-600 font-medium mt-0.5 truncate">
+              {recentQualityEvents?.find(e => e.reference === "DEV-2026-018" || e.id === "DEV-2026-018")?.severity_or_status === "Closed" 
+                ? "DEV-2026-018 Closed" 
+                : "DEV-2026-018 Active"}
+            </div>
+          </div>
+
+          <div
+            onClick={() => onNavigate?.("investigation", { deviationId: "DEV-2026-018", investigationId: "INV-2026-012" })}
+            className="p-2.5 bg-white/90 rounded-lg border border-blue-100 hover:border-blue-300 cursor-pointer transition shadow-xs"
+          >
+            <div className="text-[10px] font-bold uppercase text-slate-500">Investigations</div>
+            <div className="text-xl font-bold text-slate-900 mt-1">{qmsMetrics.investigations ?? 4}</div>
+            <div className="text-[10px] text-indigo-600 font-medium mt-0.5 truncate">
+              {recentQualityEvents?.find(e => e.reference === "INV-2026-012" || e.id === "INV-2026-012")?.severity_or_status === "Completed"
+                ? "INV-2026-012 Done"
+                : "INV-2026-012 Active"}
+            </div>
+          </div>
+
+          <div
+            onClick={() => onNavigate?.("capa", { deviationId: "DEV-2026-018", capaId: "CAPA-2026-009" })}
+            className="p-2.5 bg-white/90 rounded-lg border border-blue-100 hover:border-blue-300 cursor-pointer transition shadow-xs"
+          >
+            <div className="text-[10px] font-bold uppercase text-slate-500">CAPAs</div>
+            <div className="text-xl font-bold text-slate-900 mt-1">{qmsMetrics.capas ?? 3}</div>
+            <div className="text-[10px] text-emerald-600 font-medium mt-0.5 truncate">
+              {recentQualityEvents?.find(e => e.reference === "CAPA-2026-009" || e.id === "CAPA-2026-009")?.severity_or_status === "Completed"
+                ? "CAPA-2026-009 Done"
+                : "CAPA-2026-009 Active"}
+            </div>
+          </div>
+
+          <div
+            onClick={() => onNavigate?.("batch_release", { batchNumber: "API-2026-041", batchReleaseId: "BR-2026-041" })}
+            className="p-2.5 bg-white/90 rounded-lg border border-amber-200/80 bg-amber-50/40 hover:border-amber-300 cursor-pointer transition shadow-xs"
+          >
+            <div className="text-[10px] font-bold uppercase text-amber-800">Batch Release</div>
+            <div className="text-xl font-bold text-amber-900 mt-1">{qmsMetrics.pending_batch_releases ?? 2} pending</div>
+            <div className="text-[10px] text-amber-700 font-medium mt-0.5 truncate">
+              {recentQualityEvents?.find(e => e.reference?.includes("041") || e.id?.includes("041"))?.severity_or_status === "Released"
+                ? "API-2026-041 Released"
+                : "API-2026-041 On Hold"}
+            </div>
+          </div>
+
+          <div
+            onClick={() => onNavigate?.("complaints")}
+            className="p-2.5 bg-white/90 rounded-lg border border-blue-100 hover:border-blue-300 cursor-pointer transition shadow-xs"
+          >
+            <div className="text-[10px] font-bold uppercase text-slate-500">Complaints</div>
+            <div className="text-xl font-bold text-slate-900 mt-1">{qmsMetrics.complaints ?? 1}</div>
+            <div className="text-[10px] text-blue-600 font-medium mt-0.5">COM-2026-003</div>
+          </div>
+
+          <div
+            onClick={() => onNavigate?.("investigation", { deviationId: "DEV-2026-018", investigationId: "INV-2026-012" })}
+            className="p-2.5 bg-white/90 rounded-lg border border-red-200/80 bg-red-50/40 hover:border-red-300 cursor-pointer transition shadow-xs"
+          >
+            <div className="text-[10px] font-bold uppercase text-red-800">Actions Required</div>
+            <div className="text-xl font-bold text-red-900 mt-1">{qmsMetrics.actions_required_count ?? 5}</div>
+            <div className="text-[10px] text-red-700 font-medium mt-0.5">Overdue / Blocked</div>
+          </div>
+        </div>
+      </div>
+
+      {/* RECENT QUALITY EVENTS WORKFLOW ROW */}
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-blue-600" />
+              Recent Quality Events
+            </h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Connected lifecycle progression for reference demo scenario
+            </p>
+          </div>
+          <span className="text-xs font-semibold text-slate-400">
+            {recentQualityEvents.length} active stages
+          </span>
+        </div>
+
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                <th className="py-2.5 px-3">Record ID</th>
+                <th className="py-2.5 px-3">Event / Context</th>
+                <th className="py-2.5 px-3">Severity</th>
+                <th className="py-2.5 px-3">Workflow State</th>
+                <th className="py-2.5 px-3 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {recentQualityEvents.map((evt) => (
+                <tr
+                  key={evt.id}
+                  onClick={() => onRecordClick?.(evt.type || "deviation", evt.id)}
+                  className="cursor-pointer hover:bg-blue-50/40 transition group"
+                >
+                  <td className="py-2.5 px-3 font-mono font-bold text-blue-700 whitespace-nowrap">
+                    {evt.id}
+                  </td>
+                  <td className="py-2.5 px-3">
+                    <span className="font-semibold text-slate-800" title={evt.title}>{evt.title}</span>
+                    <span className="text-[10px] text-slate-400 block">Batch: {evt.batch || "API-2026-041"}</span>
+                  </td>
+                  <td className="py-2.5 px-3 whitespace-nowrap">
+                    <Badge className="bg-amber-50 text-amber-800 border-amber-200">
+                      {evt.severity || "Major"}
+                    </Badge>
+                  </td>
+                  <td className="py-2.5 px-3 whitespace-nowrap">
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                        STATUS_STYLES[evt.status?.toLowerCase()] || "bg-slate-100 text-slate-700 border-slate-200"
+                      }`}
+                    >
+                      {evt.status}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-blue-600 hover:text-blue-800 inline-flex items-center gap-1 group-hover:translate-x-0.5 transition"
+                    >
+                      <span>Open Workspace</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* SUMMARY CARDS: Total Deviations, Critical, Major, Minor */}

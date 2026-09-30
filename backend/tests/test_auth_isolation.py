@@ -1,4 +1,4 @@
-"""Tests for Supabase Auth, RBAC, Admin access, and Multi-tenant Company Data Isolation."""
+"""Tests for Supabase Auth, RBAC, and Multi-tenant Company Data Isolation."""
 
 import pytest
 from httpx import AsyncClient

@@ -9,11 +9,17 @@ from app.services.extraction_service import ExtractionService
 from app.services.ocr_service import OcrService
 from app.services.report_service import ReportService
 
+from app.services.qms_service import QmsService
+
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 def get_deviation_service(session: SessionDep) -> DeviationService:
     return DeviationService(session)
+
+
+def get_qms_service(session: SessionDep) -> QmsService:
+    return QmsService(session)
 
 
 def get_report_service(session: SessionDep) -> ReportService:
@@ -31,5 +37,6 @@ def get_extraction_service(
 
 
 DeviationServiceDep = Annotated[DeviationService, Depends(get_deviation_service)]
+QmsServiceDep = Annotated[QmsService, Depends(get_qms_service)]
 ReportServiceDep = Annotated[ReportService, Depends(get_report_service)]
 ExtractionServiceDep = Annotated[ExtractionService, Depends(get_extraction_service)]

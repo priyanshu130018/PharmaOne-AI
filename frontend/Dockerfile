@@ -1,5 +1,5 @@
-# Multi-stage build for frontend using Node alpine without Nginx.
-# Runs the built React application using Vite's production preview server.
+# Production container for frontend React application.
+# Runs the built production bundle using Vite's preview server.
 
 FROM node:20-alpine
 

@@ -11,7 +11,6 @@ and membership in PostgreSQL.
 import asyncio
 import logging
 import uuid
-from typing import Any, Dict, List
 
 from sqlalchemy import select, update
 from supabase import create_client

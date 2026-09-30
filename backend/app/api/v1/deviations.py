@@ -19,6 +19,7 @@ from app.schemas.deviation import (
 )
 from app.schemas.extraction import ExtractionResponse
 from app.schemas.process import ProcessRequest, ProcessResponse
+from app.schemas.qms import DeviationSeverityConfirm
 
 router = APIRouter(prefix="/deviations", tags=["deviations"])
 
@@ -167,6 +168,22 @@ async def update_deviation(
 ) -> DeviationRead:
     """Update deviation ensuring tenant isolation."""
     deviation = await service.update(deviation_id, payload, user=current_user)
+    return DeviationRead.model_validate(deviation)
+
+
+@router.post(
+    "/{deviation_id}/confirm-severity",
+    response_model=DeviationRead,
+    summary="QA human review and confirmation of AI advisory severity & impact",
+)
+async def confirm_deviation_severity(
+    deviation_id: UUID,
+    payload: DeviationSeverityConfirm,
+    service: DeviationServiceDep,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> DeviationRead:
+    """Record authoritative QA human decision on AI-suggested severity and impact."""
+    deviation = await service.confirm_severity(deviation_id, payload, user=current_user)
     return DeviationRead.model_validate(deviation)
 
 

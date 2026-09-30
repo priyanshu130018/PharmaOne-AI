@@ -4,7 +4,7 @@
 const opt = (value, label) => ({ value, label });
 
 export const DEVIATION_TYPES = [
-  opt("process", "Process"),
+  opt("process", "Process Deviation / Process Excursion"),
   opt("equipment", "Equipment"),
   opt("documentation", "Documentation"),
   opt("material", "Material"),
@@ -40,6 +40,7 @@ export const BATCH_STATUSES = [
 ];
 
 export const SOURCES = [
+  opt("manufacturing", "Manufacturing / IPC"),
   opt("manual", "Manual entry"),
   opt("text", "Pasted text"),
   opt("email", "Email"),

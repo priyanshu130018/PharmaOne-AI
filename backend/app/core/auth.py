@@ -4,14 +4,14 @@ Enforces:
 - Bearer token extraction and cryptographic/API validation.
 - Profile and company membership resolution from PostgreSQL.
 - Company data isolation (derived from authenticated membership, never trusted from client).
-- Role-based access control (Admin, QA Manager, Production User, QC User).
+- Role-based access control (QA Manager, Production User, QC User).
 - Immutable audit event logging (LOGIN, LOGOUT, ACCESS_DENIED).
 """
 
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -45,10 +45,6 @@ class AuthenticatedUser:
     site_name: Optional[str]
     role: str
 
-    @property
-    def is_admin(self) -> bool:
-        return self.role == "Admin"
-
 
 async def record_audit_event(
     db: AsyncSession,
@@ -73,9 +69,15 @@ async def record_audit_event(
     return event
 
 
+_supabase_client = None
+
+
 def _get_supabase_client():
-    settings = get_settings()
-    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+    global _supabase_client
+    if _supabase_client is None:
+        settings = get_settings()
+        _supabase_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+    return _supabase_client
 
 
 async def get_current_user(
@@ -226,6 +228,3 @@ def require_role(*allowed_roles: str) -> Callable:
         return user
 
     return _role_checker
-
-
-require_admin = require_role("Admin")
